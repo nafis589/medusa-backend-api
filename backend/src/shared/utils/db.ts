@@ -25,6 +25,7 @@ export function getPool(): mysql.Pool {
       queueLimit: 0,
       enableKeepAlive: true,
       keepAliveInitialDelay: 10000,
+      charset: 'utf8mb4',
     });
   }
   return pool;
@@ -49,6 +50,7 @@ export async function initializeDatabase(): Promise<void> {
     port,
     user,
     password,
+    charset: 'utf8mb4',
   });
 
   try {
