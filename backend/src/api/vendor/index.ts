@@ -2,17 +2,17 @@ import { Router } from 'express';
 import { authenticate } from '@shared/middlewares/authenticate';
 import { authorize } from '@shared/middlewares/authorize';
 import { rateLimit } from '@shared/middlewares/rate-limit';
+import vendorAuthRoutes from '../../modules/auth/vendor-auth.routes';
 
 const router = Router();
+
+// ── Vendor auth (Phase 2) ─────────────────────────────────────────────────
+router.use('/auth', vendorAuthRoutes);
 
 // Authenticated vendor — 200 req/min
 router.use(authenticate);
 router.use(authorize('VENDOR'));
 router.use(rateLimit({ windowMs: 60 * 1000, max: 200 }));
-
-// ── Vendor auth (Phase 2) ─────────────────────────────────────────────────
-// import vendorAuthRoutes from '@modules/auth/vendor-auth.routes';
-// router.use('/auth', vendorAuthRoutes);
 
 // ── Product management (Phase 4) ──────────────────────────────────────────
 // import vendorProductRoutes from '@modules/product/vendor-product.routes';

@@ -32,10 +32,13 @@ router.get('/', async (_req, res, next) => {
 
     const tree = await service.getTree();
 
-    try {
-      await redis.set('categories:tree', JSON.stringify(tree), 'EX', 3600);
-    } catch (err) {
-      logger.warn(err, 'Redis write failed on categories:tree');
+    // Do not cache an empty tree — avoids serving stale [] after a fresh seed
+    if (tree.length > 0) {
+      try {
+        await redis.set('categories:tree', JSON.stringify(tree), 'EX', 3600);
+      } catch (err) {
+        logger.warn(err, 'Redis write failed on categories:tree');
+      }
     }
 
     res.json({ data: tree });

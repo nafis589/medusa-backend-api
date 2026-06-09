@@ -1,6 +1,7 @@
 import { randomUUID } from 'crypto';
 import { getPool, initializeDatabase, clearDatabase } from '@shared/utils/db';
 import { generateSlug } from '@shared/utils/slug';
+import { getRedis } from '@shared/utils/redis';
 
 interface SeedCategory {
   name: string;
@@ -191,6 +192,12 @@ export async function seedCategories(): Promise<void> {
 
   for (const category of SEED_CATEGORIES) {
     await insertCategory(pool, category, null);
+  }
+
+  try {
+    await getRedis().del('categories:tree');
+  } catch {
+    // Redis optional during seed
   }
 
   console.log(`✅ Seeded ${String(SEED_CATEGORIES.length)} root categories with subcategories.`);

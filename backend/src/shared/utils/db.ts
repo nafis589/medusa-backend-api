@@ -95,6 +95,40 @@ export async function initializeDatabase(): Promise<void> {
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
   `);
 
+  // Create users table
+  await dbPool.query(`
+    CREATE TABLE IF NOT EXISTS users (
+      id CHAR(36) PRIMARY KEY,
+      email VARCHAR(255) UNIQUE NOT NULL,
+      password_hash VARCHAR(255) NOT NULL,
+      first_name VARCHAR(100) NOT NULL,
+      last_name VARCHAR(100) NOT NULL,
+      role ENUM('BUYER', 'VENDOR', 'ADMIN') DEFAULT 'BUYER' NOT NULL,
+      avatar_url VARCHAR(500) NULL,
+      phone VARCHAR(20) NULL,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+  `);
+
+  // Create vendors table
+  await dbPool.query(`
+    CREATE TABLE IF NOT EXISTS vendors (
+      id CHAR(36) PRIMARY KEY,
+      user_id CHAR(36) UNIQUE NOT NULL,
+      shop_name VARCHAR(255) NOT NULL,
+      shop_description TEXT NULL,
+      shop_logo VARCHAR(500) NULL,
+      shop_banner VARCHAR(500) NULL,
+      status ENUM('PENDING', 'ACTIVE', 'SUSPENDED') DEFAULT 'PENDING' NOT NULL,
+      total_sales INT DEFAULT 0 NOT NULL,
+      rating DECIMAL(3, 2) DEFAULT 0.00 NOT NULL,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+  `);
+
   logger.info('Database schema tables verified successfully.');
 }
 
@@ -106,6 +140,8 @@ export async function clearDatabase(): Promise<void> {
   await dbPool.query('SET FOREIGN_KEY_CHECKS = 0;');
   await dbPool.query('TRUNCATE TABLE products;');
   await dbPool.query('TRUNCATE TABLE categories;');
+  await dbPool.query('TRUNCATE TABLE vendors;');
+  await dbPool.query('TRUNCATE TABLE users;');
   await dbPool.query('SET FOREIGN_KEY_CHECKS = 1;');
   logger.info('Database tables cleared.');
 }

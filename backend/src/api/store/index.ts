@@ -7,8 +7,10 @@ const router = Router();
 router.use(rateLimit({ windowMs: 60 * 1000, max: 100 }));
 
 // ── Auth routes (Phase 2) ──────────────────────────────────────────────────
-// import authRoutes from '@modules/auth/auth.routes';
-// router.use('/auth', authRoutes);
+import authRoutes from '../../modules/auth/auth.routes';
+import profileRoutes from '../../modules/auth/profile.routes';
+router.use('/auth', authRoutes);
+router.use('/profile', profileRoutes);
 
 // ── Category routes (Phase 1) ─────────────────────────────────────────────
 import categoryRoutes from '@modules/category/category.routes';
