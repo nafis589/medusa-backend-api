@@ -5,6 +5,7 @@ import { UserRepository } from './user.repository';
 import { authenticate } from '@shared/middlewares/authenticate';
 import { validate } from '@shared/middlewares/validate';
 import { AppError } from '@shared/errors/app-error';
+import { createCartService } from '@modules/cart/cart.factory';
 import {
   RegisterSchema,
   LoginSchema,
@@ -15,7 +16,8 @@ import {
 
 const router = Router();
 const userRepository = new UserRepository();
-const authService = new AuthService(userRepository);
+const cartService = createCartService();
+const authService = new AuthService(userRepository, cartService);
 
 /**
  * POST /api/store/auth/register
@@ -41,8 +43,9 @@ router.post('/register', validate(RegisterSchema), async (req, res, next) => {
  */
 router.post('/login', validate(LoginSchema), async (req, res, next) => {
   try {
-    const { email, password } = req.body as z.infer<typeof LoginSchema>;
-    const result = await authService.login(email, password);
+    const { email, password, session_id } = req.body as z.infer<typeof LoginSchema>;
+    const sessionId = session_id ?? (req.cookies?.session_id as string | undefined);
+    const result = await authService.login(email, password, sessionId);
     res.json({ data: result });
   } catch (err) {
     next(err);

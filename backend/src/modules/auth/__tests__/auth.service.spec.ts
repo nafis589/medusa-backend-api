@@ -149,6 +149,19 @@ describe('AuthService', () => {
       expect(result.refreshToken).toBeDefined();
     });
 
+    it('merges guest cart on login when sessionId is provided', async () => {
+      const hashedPassword = await hashPassword('correct_pass');
+      const user = makeUser({ email: 'login@example.com', password_hash: hashedPassword });
+      const repo = buildRepo({ findByEmail: jest.fn().mockResolvedValue(user) });
+      const mergeGuestCart = jest.fn().mockResolvedValue(undefined);
+      const cartService = { mergeGuestCart } as unknown as import('@modules/cart/cart.service').CartService;
+      const svc = new AuthService(repo, cartService);
+
+      await svc.login('login@example.com', 'correct_pass', 'guest-session-1');
+
+      expect(mergeGuestCart).toHaveBeenCalledWith('guest-session-1', user.id);
+    });
+
     it('throws 401 INVALID_CREDENTIALS when user email is not found', async () => {
       const repo = buildRepo({ findByEmail: jest.fn().mockResolvedValue(null) });
       const svc = new AuthService(repo);

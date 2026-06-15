@@ -46,6 +46,20 @@ export class CategoryRepository implements ICategoryRepository {
     return results[0].count;
   }
 
+  async findDescendantIds(rootId: string): Promise<string[]> {
+    const [rows] = await this.pool.query(
+      `WITH RECURSIVE cat_tree AS (
+        SELECT id FROM categories WHERE id = ?
+        UNION ALL
+        SELECT c.id FROM categories c
+        INNER JOIN cat_tree ct ON c.parent_id = ct.id
+      )
+      SELECT id FROM cat_tree`,
+      [rootId],
+    );
+    return (rows as { id: string }[]).map((row) => row.id);
+  }
+
   async create(data: CreateCategoryData & { id: string; slug: string }): Promise<Category> {
     await this.pool.query(
       'INSERT INTO categories (id, name, slug, parent_id, column_group, image_url, position) VALUES (?, ?, ?, ?, ?, ?, ?)',

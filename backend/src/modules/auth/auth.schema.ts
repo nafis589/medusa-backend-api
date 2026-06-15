@@ -10,6 +10,7 @@ export const RegisterSchema = z.object({
 export const LoginSchema = z.object({
   email: z.string().email(),
   password: z.string(),
+  session_id: z.string().min(1).optional(),
 });
 
 export const RefreshSchema = z.object({

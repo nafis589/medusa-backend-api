@@ -12,6 +12,7 @@ import {
 import { getRedis } from '@shared/utils/redis';
 import { sendMail } from '@shared/utils/mail';
 import { AppError } from '@shared/errors/app-error';
+import type { CartService } from '@modules/cart/cart.service';
 
 function omitPassword(user: User): Omit<User, 'password_hash'> {
   const { password_hash: _, ...rest } = user;
@@ -19,7 +20,10 @@ function omitPassword(user: User): Omit<User, 'password_hash'> {
 }
 
 export class AuthService {
-  constructor(private userRepository: IUserRepository) {}
+  constructor(
+    private userRepository: IUserRepository,
+    private readonly cartService?: CartService,
+  ) {}
 
   async register(data: Omit<CreateUserData, 'password_hash'> & { password: string }): Promise<{
     user: Omit<User, 'password_hash'>;
@@ -58,7 +62,11 @@ export class AuthService {
     };
   }
 
-  async login(email: string, password: string): Promise<{
+  async login(
+    email: string,
+    password: string,
+    sessionId?: string,
+  ): Promise<{
     user: Omit<User, 'password_hash'>;
     accessToken: string;
     refreshToken: string;
@@ -78,6 +86,10 @@ export class AuthService {
     // 3. Generate tokens
     const accessToken = signToken({ id: user.id, email: user.email, role: user.role });
     const refreshToken = signRefreshToken({ id: user.id });
+
+    if (sessionId && this.cartService) {
+      await this.cartService.mergeGuestCart(sessionId, user.id);
+    }
 
     return {
       user: omitPassword(user),

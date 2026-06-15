@@ -288,13 +288,28 @@ describe('Category API Integration Tests', () => {
       const db = getPool();
       const categoryId = randomUUID();
       const productId = randomUUID();
+      const userId = randomUUID();
+      const vendorId = randomUUID();
 
       await db.query(
         'INSERT INTO categories (id, name, slug, parent_id, position) VALUES (?, ?, ?, ?, ?)',
         [categoryId, 'Femme', 'femme', null, 1]
       );
 
-      await db.query('INSERT INTO products (id, category_id) VALUES (?, ?)', [productId, categoryId]);
+      await db.query(
+        'INSERT INTO users (id, email, password_hash, first_name, last_name, role) VALUES (?, ?, ?, ?, ?, ?)',
+        [userId, 'vendor@category.test', 'hash', 'Vendor', 'Test', 'VENDOR'],
+      );
+
+      await db.query(
+        'INSERT INTO vendors (id, user_id, shop_name, status) VALUES (?, ?, ?, ?)',
+        [vendorId, userId, 'Shop Test', 'ACTIVE'],
+      );
+
+      await db.query(
+        'INSERT INTO products (id, vendor_id, title, price, category_id) VALUES (?, ?, ?, ?, ?)',
+        [productId, vendorId, 'Robe test', 5000, categoryId],
+      );
 
       const res = await request(app)
         .delete(`/api/admin/categories/${categoryId}`)

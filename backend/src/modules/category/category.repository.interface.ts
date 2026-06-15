@@ -20,6 +20,9 @@ export interface ICategoryRepository {
   /** Count products linked to a category */
   countProducts(categoryId: string): Promise<number>;
 
+  /** Category id plus all descendant category ids */
+  findDescendantIds(rootId: string): Promise<string[]>;
+
   /** Insert and return a new category */
   create(data: CreateCategoryData & { id: string; slug: string }): Promise<Category>;
 

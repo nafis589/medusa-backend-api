@@ -6,6 +6,7 @@ if (isTestEnv) {
 }
 
 import express from 'express';
+import cookieParser from 'cookie-parser';
 import helmet from 'helmet';
 import compression from 'compression';
 import { createServer } from 'http';
@@ -32,10 +33,17 @@ export const io = new SocketIOServer(httpServer, {
   },
 });
 
+import { initSocketGateway } from '@modules/notification/socket.gateway';
+import { registerSubscribers } from '@subscribers/index';
+
+initSocketGateway(io);
+registerSubscribers();
+
 // ── Global middlewares ────────────────────────────────────────────────────────
 app.use(helmet());
 app.use(compression());
 app.use(corsMiddleware);
+app.use(cookieParser());
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));
 

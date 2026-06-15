@@ -17,20 +17,24 @@ import categoryRoutes from '@modules/category/category.routes';
 router.use('/categories', categoryRoutes);
 
 // ── Product routes (Phase 4) ──────────────────────────────────────────────
-// import productRoutes from '@modules/product/product.routes';
-// router.use('/products', productRoutes);
+import productRoutes from '@modules/product/product.routes';
+import productSearchRoutes from '@modules/product/product-search.routes';
+import productTrendingRoutes from '@modules/product/product-trending.routes';
+router.use('/products', productRoutes);
+router.use('/search', productSearchRoutes);
+router.use('/trending', productTrendingRoutes);
 
 // ── Cart routes (Phase 5) ─────────────────────────────────────────────────
-// import cartRoutes from '@modules/cart/cart.routes';
-// router.use('/cart', cartRoutes);
+import cartRoutes from './cart';
+router.use('/cart', cartRoutes);
 
 // ── Order routes (Phase 6) ────────────────────────────────────────────────
-// import orderRoutes from '@modules/order/order.routes';
-// router.use('/orders', orderRoutes);
+import orderRoutes from './orders';
+router.use('/orders', orderRoutes);
 
 // ── Shipping routes (Phase 3) ─────────────────────────────────────────────
-// import shippingRoutes from '@modules/shipping/shipping.routes';
-// router.use('/shipping', shippingRoutes);
+import shippingRoutes from '@modules/shipping/shipping.routes';
+router.use('/shipping', shippingRoutes);
 
 // ── Notification routes (Phase 9) ─────────────────────────────────────────
 // import notificationRoutes from '@modules/notification/notification.routes';

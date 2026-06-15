@@ -169,15 +169,28 @@ async function insertCategory(
   cat: SeedCategory,
   parentId: string | null,
 ): Promise<void> {
-  const id = randomUUID();
   const slug = cat.slug ?? generateSlug(cat.name);
 
-  await pool.query(
-    `INSERT IGNORE INTO categories
-       (id, name, slug, parent_id, column_group, image_url, position)
-     VALUES (?, ?, ?, ?, ?, NULL, ?)`,
-    [id, cat.name, slug, parentId, cat.column_group ?? null, cat.position],
-  );
+  const [existing] = await pool.query('SELECT id FROM categories WHERE slug = ? LIMIT 1', [slug]);
+  const existingRows = existing as { id: string }[];
+
+  let id: string;
+  if (existingRows.length > 0) {
+    id = existingRows[0].id;
+    await pool.query(
+      `UPDATE categories
+       SET name = ?, parent_id = ?, column_group = ?, position = ?
+       WHERE id = ?`,
+      [cat.name, parentId, cat.column_group ?? null, cat.position, id],
+    );
+  } else {
+    id = randomUUID();
+    await pool.query(
+      `INSERT INTO categories (id, name, slug, parent_id, column_group, image_url, position)
+       VALUES (?, ?, ?, ?, ?, NULL, ?)`,
+      [id, cat.name, slug, parentId, cat.column_group ?? null, cat.position],
+    );
+  }
 
   if (cat.children && cat.children.length > 0) {
     for (const child of cat.children) {

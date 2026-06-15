@@ -15,16 +15,16 @@ import adminCategoryRoutes from '@modules/category/admin-category.routes';
 router.use('/categories', adminCategoryRoutes);
 
 // ── Product moderation (Phase 4) ──────────────────────────────────────────
-// import adminProductRoutes from '@modules/product/admin-product.routes';
-// router.use('/products', adminProductRoutes);
+import adminProductRoutes from '@modules/product/admin-product.routes';
+router.use('/products', adminProductRoutes);
 
 // ── Vendor management (Phase 7) ───────────────────────────────────────────
 // import adminVendorRoutes from '@modules/vendor/admin-vendor.routes';
 // router.use('/vendors', adminVendorRoutes);
 
 // ── Order overview (Phase 6) ──────────────────────────────────────────────
-// import adminOrderRoutes from '@modules/order/admin-order.routes';
-// router.use('/orders', adminOrderRoutes);
+import adminOrderRoutes from '@modules/order/admin-order.routes';
+router.use('/orders', adminOrderRoutes);
 
 // ── User management (Phase 10) ────────────────────────────────────────────
 // import adminUserRoutes from '@modules/auth/admin-user.routes';

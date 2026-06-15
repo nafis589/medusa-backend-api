@@ -1,9 +1,14 @@
 import type { Request, Response, NextFunction } from 'express';
 
+function parseOrigins(value: string | undefined, fallback: string): string[] {
+  if (!value?.trim()) return [fallback];
+  return value.split(',').map((o) => o.trim()).filter(Boolean);
+}
+
 const ALLOWED_ORIGINS = [
-  process.env.CORS_ORIGIN_STORE ?? 'http://localhost:3000',
-  process.env.CORS_ORIGIN_VENDOR ?? 'http://localhost:3001',
-  process.env.CORS_ORIGIN_ADMIN ?? 'http://localhost:3002',
+  ...parseOrigins(process.env.CORS_ORIGIN_STORE, 'http://localhost:3000'),
+  ...parseOrigins(process.env.CORS_ORIGIN_VENDOR, 'http://localhost:3001'),
+  ...parseOrigins(process.env.CORS_ORIGIN_ADMIN, 'http://localhost:3002'),
 ];
 
 export function corsMiddleware(req: Request, res: Response, next: NextFunction): void {

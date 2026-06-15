@@ -49,6 +49,7 @@ function buildRepo(overrides: Partial<ICategoryRepository> = {}): ICategoryRepos
       }),
     ),
     delete: jest.fn().mockResolvedValue(undefined),
+    findDescendantIds: jest.fn().mockResolvedValue([]),
     ...overrides,
   };
 }
