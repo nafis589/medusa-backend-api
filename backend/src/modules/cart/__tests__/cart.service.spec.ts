@@ -60,6 +60,13 @@ function makeCartItemWithProduct(overrides: Partial<CartItemWithProduct> = {}): 
       primary_image: null,
       price: 15000,
       status: 'ACTIVE',
+      vendor: {
+        id: 'vendor-1',
+        shop_name: 'Boutique Test',
+        total_sales: 12,
+        active_products: 8,
+        region: 'Maritime',
+      },
     },
     ...overrides,
   };

@@ -70,10 +70,29 @@ async function start(): Promise<void> {
   try {
     await initializeDatabase();
     if (process.env.NODE_ENV !== 'test') {
+      httpServer.on('error', (err: NodeJS.ErrnoException) => {
+        if (err.code === 'EADDRINUSE') {
+          logger.error(
+            `Port ${String(PORT)} déjà utilisé. Lancez "npm run stop" dans backend/ puis "npm run dev".`,
+          );
+          process.exit(1);
+        }
+        throw err;
+      });
+
       httpServer.listen(PORT, () => {
         logger.info(`🚀 Server running on http://localhost:${String(PORT)}`);
         logger.info(`📡 Socket.IO ready`);
       });
+
+      const shutdown = (signal: string) => {
+        logger.info(`Arrêt (${signal})…`);
+        httpServer.close(() => process.exit(0));
+        setTimeout(() => process.exit(1), 5000).unref();
+      };
+
+      process.on('SIGINT', () => shutdown('SIGINT'));
+      process.on('SIGTERM', () => shutdown('SIGTERM'));
     }
   } catch (err) {
     logger.error(err, 'Failed to initialize database and start server');

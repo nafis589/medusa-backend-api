@@ -37,8 +37,8 @@ import shippingRoutes from '@modules/shipping/shipping.routes';
 router.use('/shipping', shippingRoutes);
 
 // ── Notification routes (Phase 9) ─────────────────────────────────────────
-// import notificationRoutes from '@modules/notification/notification.routes';
-// router.use('/notifications', notificationRoutes);
+import notificationRoutes from '@modules/notification/notification.routes';
+router.use('/notifications', notificationRoutes);
 
 // ── Recommendation routes (Phase 11) ──────────────────────────────────────
 // import recommendationRoutes from '@modules/recommendation/recommendation.routes';

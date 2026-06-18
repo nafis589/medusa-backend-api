@@ -7,6 +7,7 @@ import request from 'supertest';
 import app from '@/index';
 import { closePool, clearDatabase, getPool, initializeDatabase } from '@shared/utils/db';
 import { hashPassword } from '@shared/utils/hash';
+import { signToken } from '@shared/utils/jwt.util';
 
 const PRODUCT_ID = 'c0000000-0000-4000-8000-000000000001';
 const VENDOR_ID = 'b0000000-0000-4000-8000-000000000001';
@@ -63,6 +64,22 @@ describe('Cart API Integration Tests', () => {
     expect(res.body.data.total).toBe(0);
     expect(res.body.data.itemCount).toBe(0);
     expect(res.headers['set-cookie']?.[0]).toMatch(/session_id=/);
+  });
+
+  it('GET /api/store/cart falls back to guest cart when JWT user no longer exists', async () => {
+    const staleToken = signToken({
+      id: 'df3d0f49-1009-401c-b7c2-df860d618a61',
+      email: 'deleted@example.com',
+      role: 'BUYER',
+    });
+
+    const res = await request(app)
+      .get('/api/store/cart')
+      .set('Authorization', `Bearer ${staleToken}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.data.items).toEqual([]);
+    expect(res.body.data.total).toBe(0);
   });
 
   it('POST /api/store/cart/items adds a product and returns updated cart', async () => {

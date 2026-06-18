@@ -53,4 +53,44 @@ export class NotificationRepository implements INotificationRepository {
     }
     return mapNotification(results[0]);
   }
+
+  async list(
+    userId: string,
+    offset: number,
+    limit: number,
+  ): Promise<{ notifications: Notification[]; total: number }> {
+    const [countRows] = await this.pool.query(
+      'SELECT COUNT(*) AS total FROM notifications WHERE user_id = ?',
+      [userId],
+    );
+    const total = Number((countRows as mysql.RowDataPacket[])[0]?.total ?? 0);
+
+    const [rows] = await this.pool.query(
+      `SELECT * FROM notifications
+       WHERE user_id = ?
+       ORDER BY created_at DESC
+       LIMIT ? OFFSET ?`,
+      [userId, limit, offset],
+    );
+
+    return {
+      notifications: (rows as mysql.RowDataPacket[]).map(mapNotification),
+      total,
+    };
+  }
+
+  async markAsRead(userId: string, notificationId: string): Promise<boolean> {
+    const [result] = await this.pool.query(
+      'UPDATE notifications SET is_read = TRUE WHERE id = ? AND user_id = ?',
+      [notificationId, userId],
+    );
+    return (result as mysql.ResultSetHeader).affectedRows > 0;
+  }
+
+  async markAllAsRead(userId: string): Promise<void> {
+    await this.pool.query(
+      'UPDATE notifications SET is_read = TRUE WHERE user_id = ? AND is_read = FALSE',
+      [userId],
+    );
+  }
 }

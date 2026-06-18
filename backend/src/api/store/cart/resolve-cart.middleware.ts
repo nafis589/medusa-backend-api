@@ -2,10 +2,12 @@ import { randomUUID } from 'crypto';
 import type { Request, Response, NextFunction } from 'express';
 import type { Cart } from '@modules/cart/cart.entity';
 import type { CartService } from '@modules/cart/cart.service';
+import { UserRepository } from '@modules/auth/user.repository';
 import { verifyToken } from '@shared/utils/jwt.util';
 
 const SESSION_COOKIE = 'session_id';
 const SESSION_MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000;
+const userRepository = new UserRepository();
 
 declare global {
   // eslint-disable-next-line @typescript-eslint/no-namespace
@@ -38,6 +40,11 @@ async function resolveUserIdFromBearer(req: Request): Promise<string | undefined
   const token = authHeader.slice(7);
   try {
     const decoded = verifyToken(token);
+    const user = await userRepository.findById(decoded.id);
+    if (!user) {
+      // JWT valide mais utilisateur absent (ex. base réinitialisée) → panier invité
+      return undefined;
+    }
     req.user = decoded;
     return decoded.id;
   } catch {
