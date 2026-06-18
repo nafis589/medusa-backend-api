@@ -9,7 +9,7 @@ import type {
   ProductDetailRow,
   ProductListQuery,
 } from './product.repository.interface';
-import type { ProductListItem, ProductReview, ProductVendorSummary, ProductCategoryPath } from './product.types';
+import type { ProductListItem, ProductReview, ProductVendorSummary, ProductCategoryPath, ProductFilterFacets, FilterFacetOption } from './product.types';
 import type { VendorContact } from './product.repository.interface';
 import { ProductImageRepository } from './product-image.repository';
 
@@ -23,6 +23,7 @@ function mapListItem(row: mysql.RowDataPacket): ProductListItem {
     ...mapProduct(row),
     primary_image: (row.primary_image as string | null) ?? null,
     shop_name: (row.shop_name as string | null) ?? null,
+    category_name: (row.category_name as string | null) ?? null,
     vendor_region: resolveVendorRegionName(row.vendor_region_id as string | null),
   };
 }
@@ -137,6 +138,11 @@ export class ProductRepository implements IProductRepository {
     if (query.low_stock) {
       conditions.push('p.stock <= 2');
       conditions.push("p.status = 'ACTIVE'");
+    }
+    if (query.search?.trim()) {
+      conditions.push('(p.title LIKE ? OR p.brand LIKE ?)');
+      const term = `%${query.search.trim()}%`;
+      params.push(term, term);
     }
 
     return {
@@ -263,11 +269,13 @@ export class ProductRepository implements IProductRepository {
     const orderParams = query.ids && query.ids.length > 0 ? [...query.ids] : [];
 
     const [rows] = await this.pool.query(
-      `SELECT p.*, pi.url AS primary_image, v.shop_name, vl.region_id AS vendor_region_id
+      `SELECT p.*, pi.url AS primary_image, v.shop_name, vl.region_id AS vendor_region_id,
+              cat.name AS category_name
        FROM products p
        LEFT JOIN product_images pi ON pi.product_id = p.id AND pi.is_primary = TRUE
        LEFT JOIN vendors v ON v.id = p.vendor_id
        LEFT JOIN vendor_locations vl ON vl.vendor_id = p.vendor_id
+       LEFT JOIN categories cat ON cat.id = p.category_id
        ${clause}
        ${orderClause}
        LIMIT ? OFFSET ?`,
@@ -394,6 +402,68 @@ export class ProductRepository implements IProductRepository {
     );
 
     return (rows as mysql.RowDataPacket[]).map((row) => mapListItem(row));
+  }
+
+  async getFilterFacets(scope: ProductListQuery): Promise<ProductFilterFacets> {
+    const { clause, params } = this.buildListWhere({
+      ...scope,
+      condition: undefined,
+      color: undefined,
+      size: undefined,
+      material: undefined,
+      brand: undefined,
+      price_min: undefined,
+      price_max: undefined,
+      sort: 'newest',
+      offset: 0,
+      limit: 1,
+      status: 'ACTIVE',
+    });
+
+    const baseFrom = `FROM products p ${clause}`;
+    const append = clause ? ' AND' : ' WHERE';
+
+    const facetQuery = async (column: string): Promise<FilterFacetOption[]> => {
+      const [rows] = await this.pool.query(
+        `SELECT p.\`${column}\` AS value, COUNT(*) AS count
+         ${baseFrom}${append} p.\`${column}\` IS NOT NULL AND TRIM(p.\`${column}\`) <> ''
+         GROUP BY p.\`${column}\`
+         ORDER BY count DESC, value ASC`,
+        params,
+      );
+      return (rows as mysql.RowDataPacket[]).map((row) => ({
+        value: String(row.value),
+        count: Number(row.count),
+      }));
+    };
+
+    const [priceRows] = await this.pool.query(
+      `SELECT MIN(p.price) AS min_price, MAX(p.price) AS max_price ${baseFrom}`,
+      params,
+    );
+    const priceRow = (priceRows as mysql.RowDataPacket[])[0];
+    const minPrice = priceRow?.min_price != null ? Number(priceRow.min_price) : null;
+    const maxPrice = priceRow?.max_price != null ? Number(priceRow.max_price) : null;
+
+    const [conditions, sizes, colors, materials, brands] = await Promise.all([
+      facetQuery('condition'),
+      facetQuery('size'),
+      facetQuery('color'),
+      facetQuery('material'),
+      facetQuery('brand'),
+    ]);
+
+    return {
+      conditions,
+      sizes,
+      colors,
+      materials,
+      brands,
+      price:
+        minPrice != null && maxPrice != null && maxPrice >= minPrice
+          ? { min: minPrice, max: maxPrice }
+          : null,
+    };
   }
 
   async findVendorContactByProductId(productId: string): Promise<VendorContact | null> {

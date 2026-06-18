@@ -4,7 +4,9 @@ import { createProductService } from './product.factory';
 import {
   ProductIdSchema,
   ProductListQuerySchema,
+  ProductFilterScopeQuerySchema,
   type ProductListQueryInput,
+  type ProductFilterScopeQueryInput,
 } from './product.schema';
 import type { ProductListFilters } from './product.types';
 
@@ -30,6 +32,20 @@ function mapListFilters(query: ProductListQueryInput): ProductListFilters {
     tag: query.tag,
   };
 }
+
+/**
+ * GET /api/store/products/filters
+ * Returns available filter facets for the current category/tag scope.
+ */
+router.get('/filters', validateQuery(ProductFilterScopeQuerySchema), async (req, res, next) => {
+  try {
+    const query = req.query as unknown as ProductFilterScopeQueryInput;
+    const data = await service.getFilters(mapListFilters(query));
+    res.json({ data });
+  } catch (err) {
+    next(err);
+  }
+});
 
 /**
  * GET /api/store/products

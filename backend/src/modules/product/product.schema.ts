@@ -35,6 +35,13 @@ export const ProductSearchQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(50).default(24).optional(),
 });
 
+export const ProductFilterScopeQuerySchema = ProductListQuerySchema.pick({
+  category: true,
+  category_id: true,
+  subcategory: true,
+  tag: true,
+});
+
 export const ProductIdSchema = z.object({
   id: z.string().uuid('ID must be a valid UUID'),
 });
@@ -56,15 +63,42 @@ export const UpdateProductSchema = CreateProductSchema.partial().omit({ images: 
 
 export const AdminProductListQuerySchema = ProductListQuerySchema.extend({
   status: productStatus.optional(),
+  search: z.string().max(100).optional(),
 });
+
+export const VendorProductListQuerySchema = z.object({
+  status: productStatus.optional(),
+  search: z.string().max(100).optional(),
+  category_id: z.string().uuid().optional(),
+  low_stock: z.enum(['true']).optional(),
+  page: z.coerce.number().int().min(1).default(1).optional(),
+  limit: z.coerce.number().int().min(1).max(50).default(24).optional(),
+});
+
+export const VendorCreateProductSchema = CreateProductSchema.extend({
+  status: z.enum(['DRAFT', 'PENDING_REVIEW']).default('PENDING_REVIEW'),
+  stock: z.coerce.number().int().min(1).default(1),
+});
+
+export const VendorUpdateProductSchema = CreateProductSchema.partial()
+  .omit({ images: true })
+  .extend({
+    images: z.array(z.string().min(1)).optional(),
+    status: z.enum(['DRAFT', 'PENDING_REVIEW', 'ACTIVE']).optional(),
+    stock: z.coerce.number().int().min(1).optional(),
+  });
 
 export const RejectProductSchema = z.object({
   reason: z.string().min(1, 'Reason is required').max(1000),
 });
 
 export type ProductListQueryInput = z.infer<typeof ProductListQuerySchema>;
+export type ProductFilterScopeQueryInput = z.infer<typeof ProductFilterScopeQuerySchema>;
 export type ProductSearchQueryInput = z.infer<typeof ProductSearchQuerySchema>;
 export type CreateProductBody = z.infer<typeof CreateProductSchema>;
 export type UpdateProductBody = z.infer<typeof UpdateProductSchema>;
 export type AdminProductListQueryInput = z.infer<typeof AdminProductListQuerySchema>;
+export type VendorProductListQueryInput = z.infer<typeof VendorProductListQuerySchema>;
+export type VendorCreateProductBody = z.infer<typeof VendorCreateProductSchema>;
+export type VendorUpdateProductBody = z.infer<typeof VendorUpdateProductSchema>;
 export type RejectProductBody = z.infer<typeof RejectProductSchema>;

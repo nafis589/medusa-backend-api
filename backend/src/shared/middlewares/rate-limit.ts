@@ -16,6 +16,7 @@ interface RateLimitOptions {
  */
 export function rateLimit(opts: RateLimitOptions) {
   const { windowMs, max } = opts;
+  let warnedUnavailable = false;
 
   return async (req: Request, _res: Response, next: NextFunction): Promise<void> => {
     const ip = req.ip ?? 'unknown';
@@ -38,8 +39,11 @@ export function rateLimit(opts: RateLimitOptions) {
       }
     } catch (err) {
       if (err instanceof AppError) throw err;
-      // Redis failure → fail open (log + allow)
-      logger.warn('Rate-limit Redis unavailable, skipping check');
+      // Redis failure → fail open (allow). Log only once to avoid console flooding.
+      if (!warnedUnavailable) {
+        warnedUnavailable = true;
+        logger.warn('Rate-limit Redis unavailable, skipping check (further warnings suppressed)');
+      }
     }
 
     next();

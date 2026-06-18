@@ -4,7 +4,7 @@ import { uploadImage } from '@shared/utils/cloudinary.util';
 import { sendMail } from '@shared/utils/mail';
 import { getPagination, getPaginationMeta } from '@shared/utils/pagination';
 import type { ICategoryRepository } from '@modules/category/category.repository.interface';
-import type { Product, ProductStatus } from './product.entity';
+import type { Product, ProductStatus, UpdateProductData } from './product.entity';
 import type { IProductImageRepository } from './product-image.repository.interface';
 import type { IProductRepository } from './product.repository.interface';
 import type {
@@ -15,7 +15,15 @@ import type {
   ProductListItem,
   UpdateProductInput,
   VendorProductDetail,
+  ProductFilterFacets,
 } from './product.types';
+
+const CONDITION_LABELS: Record<string, string> = {
+  NEW: 'Neuf',
+  VERY_GOOD: 'Très bon état',
+  GOOD: 'Bon état',
+  FAIR: 'Satisfaisant',
+};
 
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -120,14 +128,19 @@ export class ProductService {
 
   async listByVendor(
     vendorId: string,
-    filters: ProductListFilters = {},
+    filters: ProductListFilters & { status?: ProductStatus } = {},
   ): Promise<{ products: ProductListItem[]; total: number; page: number; limit: number }> {
     const category_id = await this.resolveCategoryId(filters);
     const { query, page, limit } = this.buildListQuery(filters, {
       vendor_id: vendorId,
-      skipStatusFilter: true,
+      skipStatusFilter: !filters.status,
+      status: filters.status,
     });
-    const result = await this.productRepo.list({ ...query, category_id });
+    const result = await this.productRepo.list({
+      ...query,
+      category_id: filters.category_id ?? category_id,
+      search: filters.search,
+    });
     return { ...result, page, limit };
   }
 
@@ -139,7 +152,7 @@ export class ProductService {
       skipStatusFilter: !filters.status,
       status: filters.status,
     });
-    const result = await this.productRepo.list({ ...query, category_id });
+    const result = await this.productRepo.list({ ...query, category_id, search: filters.search });
     return { ...result, page, limit };
   }
 
@@ -156,6 +169,33 @@ export class ProductService {
 
   async getTrending(): Promise<ProductListItem[]> {
     return this.productRepo.findTrending(10);
+  }
+
+  async getFilters(filters: ProductListFilters = {}): Promise<ProductFilterFacets> {
+    let category_ids = filters.category_ids;
+    if (!category_ids?.length) {
+      const category_id = await this.resolveCategoryId(filters);
+      if (category_id) {
+        category_ids = await this.categoryRepo.findDescendantIds(category_id);
+      }
+    }
+
+    const facets = await this.productRepo.getFilterFacets({
+      category_ids: category_ids?.length ? category_ids : undefined,
+      tag: filters.tag,
+      sort: 'newest',
+      offset: 0,
+      limit: 1,
+      status: 'ACTIVE',
+    });
+
+    return {
+      ...facets,
+      conditions: facets.conditions.map((option) => ({
+        ...option,
+        label: CONDITION_LABELS[option.value] ?? option.value,
+      })),
+    };
   }
 
   async findById(id: string): Promise<ProductDetail> {
@@ -182,6 +222,9 @@ export class ProductService {
       data.images.map((source) => uploadImage(source)),
     );
 
+    const initialStatus =
+      data.status === 'DRAFT' ? 'DRAFT' : ('PENDING_REVIEW' as ProductStatus);
+
     const product = await this.productRepo.create({
       id: productId,
       vendor_id: vendorId,
@@ -194,7 +237,8 @@ export class ProductService {
       material: data.material ?? null,
       color: data.color ?? null,
       size: data.size ?? null,
-      status: 'PENDING_REVIEW',
+      status: initialStatus,
+      stock: data.stock ?? 1,
     });
 
     if (uploadedUrls.length > 0) {
@@ -214,7 +258,35 @@ export class ProductService {
 
   async update(id: string, vendorId: string, data: UpdateProductInput): Promise<Product> {
     await this.assertOwnership(id, vendorId);
-    return this.productRepo.update(id, data);
+
+    const { images, status, stock, ...fields } = data;
+    const updatePayload: UpdateProductData = { ...fields };
+    if (status !== undefined) updatePayload.status = status;
+    if (stock !== undefined) updatePayload.stock = stock;
+
+    if (Object.keys(updatePayload).length > 0) {
+      await this.productRepo.update(id, updatePayload);
+    }
+
+    if (images && images.length > 0) {
+      const uploadedUrls = await Promise.all(images.map((source) => uploadImage(source)));
+      await this.productImageRepo.deleteByProductId(id);
+      await this.productImageRepo.createMany(
+        uploadedUrls.map((url, index) => ({
+          id: randomUUID(),
+          product_id: id,
+          url,
+          position: index,
+          is_primary: index === 0,
+        })),
+      );
+    }
+
+    const updated = await this.productRepo.findById(id);
+    if (!updated) {
+      throw new AppError(404, 'PRODUCT_NOT_FOUND', 'Product not found');
+    }
+    return updated;
   }
 
   async delete(id: string, vendorId: string): Promise<void> {

@@ -1,15 +1,18 @@
 import { Router } from 'express';
 import { AppError } from '@shared/errors/app-error';
-import { validate, validateParams } from '@shared/middlewares/validate';
+import { validate, validateParams, validateQuery } from '@shared/middlewares/validate';
 import { getActiveVendorIdByUserId } from '@modules/vendor/vendor.util';
 import { createProductService } from './product.factory';
 import {
-  CreateProductSchema,
   ProductIdSchema,
-  UpdateProductSchema,
-  type CreateProductBody,
-  type UpdateProductBody,
+  VendorCreateProductSchema,
+  VendorProductListQuerySchema,
+  VendorUpdateProductSchema,
+  type VendorCreateProductBody,
+  type VendorProductListQueryInput,
+  type VendorUpdateProductBody,
 } from './product.schema';
+import type { ProductStatus } from './product.entity';
 
 const router = Router();
 const service = createProductService();
@@ -25,19 +28,21 @@ async function resolveVendorId(req: import('express').Request): Promise<string> 
 /**
  * GET /api/vendor/products
  */
-router.get('/', async (req, res, next) => {
+router.get('/', validateQuery(VendorProductListQuerySchema), async (req, res, next) => {
   try {
     const vendorId = await resolveVendorId(req);
-    const lowStock = req.query.low_stock === 'true';
-    const page = req.query.page ? Number(req.query.page) : undefined;
-    const limit = req.query.limit ? Number(req.query.limit) : undefined;
-    const { products, total, page: safePage, limit: safeLimit } = await service.listByVendor(
-      vendorId,
-      { low_stock: lowStock || undefined, page, limit },
-    );
+    const query = req.query as unknown as VendorProductListQueryInput;
+    const { products, total, page, limit } = await service.listByVendor(vendorId, {
+      status: query.status as ProductStatus | undefined,
+      search: query.search,
+      category_id: query.category_id,
+      low_stock: query.low_stock === 'true',
+      page: query.page,
+      limit: query.limit,
+    });
     res.json({
       data: products,
-      meta: service.getListMeta(total, safePage, safeLimit),
+      meta: service.getListMeta(total, page, limit),
     });
   } catch (err) {
     next(err);
@@ -47,10 +52,10 @@ router.get('/', async (req, res, next) => {
 /**
  * POST /api/vendor/products
  */
-router.post('/', validate(CreateProductSchema), async (req, res, next) => {
+router.post('/', validate(VendorCreateProductSchema), async (req, res, next) => {
   try {
     const vendorId = await resolveVendorId(req);
-    const body = req.body as CreateProductBody;
+    const body = req.body as VendorCreateProductBody;
     const product = await service.create(vendorId, body);
     res.status(201).json({ data: product });
   } catch (err) {
@@ -78,12 +83,12 @@ router.get('/:id', validateParams(ProductIdSchema), async (req, res, next) => {
 router.patch(
   '/:id',
   validateParams(ProductIdSchema),
-  validate(UpdateProductSchema),
+  validate(VendorUpdateProductSchema),
   async (req, res, next) => {
     try {
       const vendorId = await resolveVendorId(req);
       const { id } = req.params as { id: string };
-      const body = req.body as UpdateProductBody;
+      const body = req.body as VendorUpdateProductBody;
       const product = await service.update(id, vendorId, body);
       res.json({ data: product });
     } catch (err) {

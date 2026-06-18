@@ -22,13 +22,31 @@ export interface ProductListFilters {
   ids?: string;
   tag?: 'offer' | 'we_love';
   low_stock?: boolean;
+  search?: string;
+  status?: import('./product.entity').ProductStatus;
 }
 
 export interface ProductListItem extends Product {
   primary_image: string | null;
   shop_name?: string | null;
+  category_name?: string | null;
   /** Région Togo du vendeur (ex. Maritime, Kara) */
   vendor_region?: string | null;
+}
+
+export interface FilterFacetOption {
+  value: string;
+  label?: string;
+  count: number;
+}
+
+export interface ProductFilterFacets {
+  conditions: FilterFacetOption[];
+  sizes: FilterFacetOption[];
+  colors: FilterFacetOption[];
+  materials: FilterFacetOption[];
+  brands: FilterFacetOption[];
+  price: { min: number; max: number } | null;
 }
 
 export interface ProductVendorSummary {
@@ -71,9 +89,15 @@ export interface CreateProductInput {
   size?: string | null;
   /** Base64 data URLs or temporary HTTP(S) image URLs */
   images: string[];
+  status?: 'DRAFT' | 'PENDING_REVIEW';
+  stock?: number;
 }
 
-export type UpdateProductInput = Partial<Omit<CreateProductInput, 'images'>>;
+export type UpdateProductInput = Partial<Omit<CreateProductInput, 'images' | 'status'>> & {
+  images?: string[];
+  status?: import('./product.entity').ProductStatus;
+  stock?: number;
+};
 
 export interface VendorProductDetail extends Product {
   images: ProductImage[];

@@ -3,8 +3,8 @@ import { rateLimit } from '@shared/middlewares/rate-limit';
 
 const router = Router();
 
-// Public rate-limit: 100 req/min per IP
-router.use(rateLimit({ windowMs: 60 * 1000, max: 100 }));
+// Public rate-limit: 300 req/min per IP (storefront pages fire several calls each)
+router.use(rateLimit({ windowMs: 60 * 1000, max: 300 }));
 
 // ── Auth routes (Phase 2) ──────────────────────────────────────────────────
 import authRoutes from '../../modules/auth/auth.routes';

@@ -28,6 +28,7 @@ function mapAdminFilters(query: AdminProductListQueryInput): AdminProductListFil
     page: query.page,
     limit: query.limit,
     status: query.status,
+    search: query.search,
   };
 }
 
