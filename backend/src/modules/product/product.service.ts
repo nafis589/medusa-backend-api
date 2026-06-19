@@ -160,11 +160,52 @@ export class ProductService {
     q: string,
     page = 1,
     limit = 24,
+    filters: ProductListFilters = {},
   ): Promise<{ products: ProductListItem[]; total: number; page: number; limit: number }> {
     const safeLimit = Math.min(50, Math.max(1, Math.floor(limit)));
     const { offset } = getPagination(page, safeLimit);
-    const result = await this.productRepo.search(q, offset, safeLimit);
+    const result = await this.productRepo.search(
+      q,
+      offset,
+      safeLimit,
+      {
+        condition: filters.condition,
+        color: filters.color,
+        size: filters.size,
+        material: filters.material,
+        brand: filters.brand,
+        price_min: filters.price_min,
+        price_max: filters.price_max,
+      },
+      filters.sort ?? 'newest',
+    );
     return { ...result, page, limit: safeLimit };
+  }
+
+  async searchSuggest(q: string, limit = 8) {
+    return this.productRepo.searchSuggest(q, limit);
+  }
+
+  async getPopularSearchTerms(limit = 8) {
+    return this.productRepo.getPopularSearchTerms(limit);
+  }
+
+  async getSearchFilters(q: string): Promise<ProductFilterFacets> {
+    const facets = await this.productRepo.getFilterFacets({
+      fulltext_q: q.trim(),
+      sort: 'newest',
+      offset: 0,
+      limit: 1,
+      status: 'ACTIVE',
+    });
+
+    return {
+      ...facets,
+      conditions: facets.conditions.map((option) => ({
+        ...option,
+        label: CONDITION_LABELS[option.value] ?? option.value,
+      })),
+    };
   }
 
   async getTrending(): Promise<ProductListItem[]> {
@@ -200,7 +241,10 @@ export class ProductService {
 
   async findById(id: string): Promise<ProductDetail> {
     const detail = await this.productRepo.findDetailById(id);
-    if (!detail || detail.product.status !== 'ACTIVE') {
+    // SOLD products stay reachable by direct URL (e.g. vendor profile links);
+    // only ACTIVE and SOLD are publicly viewable — drafts/pending/archived/rejected 404.
+    const PUBLICLY_VIEWABLE: ProductStatus[] = ['ACTIVE', 'SOLD'];
+    if (!detail || !PUBLICLY_VIEWABLE.includes(detail.product.status)) {
       throw new AppError(404, 'PRODUCT_NOT_FOUND', 'Product not found');
     }
 

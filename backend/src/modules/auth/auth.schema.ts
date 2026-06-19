@@ -5,6 +5,7 @@ export const RegisterSchema = z.object({
   password: z.string().min(8),
   first_name: z.string().min(1),
   last_name: z.string().min(1),
+  session_id: z.string().min(1).optional(),
 });
 
 export const LoginSchema = z.object({

@@ -9,13 +9,71 @@ import type {
   ProductDetailRow,
   ProductListQuery,
 } from './product.repository.interface';
-import type { ProductListItem, ProductReview, ProductVendorSummary, ProductCategoryPath, ProductFilterFacets, FilterFacetOption } from './product.types';
+import type { ProductListItem, ProductReview, ProductVendorSummary, ProductCategoryPath, ProductFilterFacets, FilterFacetOption, SearchSuggestion } from './product.types';
 import type { VendorContact } from './product.repository.interface';
 import { ProductImageRepository } from './product-image.repository';
 
 function resolveVendorRegionName(regionId: string | null | undefined): string | null {
   if (!regionId) return null;
   return TOGO_REGIONS.find((r) => r.id === regionId)?.name ?? regionId;
+}
+
+/** Normalize and split a search query into meaningful lowercase tokens. */
+function tokenizeSearch(raw: string): string[] {
+  const normalized = raw
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9\s]/g, ' ')
+    .trim();
+
+  const seen = new Set<string>();
+  const tokens: string[] = [];
+  for (const token of normalized.split(/\s+/)) {
+    if (token.length < 2) continue;
+    if (seen.has(token)) continue;
+    seen.add(token);
+    tokens.push(token);
+    if (tokens.length >= 6) break;
+  }
+  return tokens;
+}
+
+/**
+ * Builds a SQL relevance expression (and its bound params) used to rank
+ * search results: exact title match > prefix > contains > brand > tokens.
+ */
+function buildRelevanceExpression(raw: string): { expression: string; params: unknown[] } {
+  const lower = raw.trim().toLowerCase();
+  if (!lower) return { expression: '0', params: [] };
+
+  const parts: string[] = [];
+  const params: unknown[] = [];
+
+  parts.push('(CASE WHEN LOWER(p.title) = ? THEN 1000 ELSE 0 END)');
+  params.push(lower);
+  parts.push('(CASE WHEN LOWER(p.title) LIKE ? THEN 400 ELSE 0 END)');
+  params.push(`${lower}%`);
+  parts.push('(CASE WHEN LOWER(p.title) LIKE ? THEN 200 ELSE 0 END)');
+  params.push(`%${lower}%`);
+  parts.push('(CASE WHEN LOWER(p.brand) = ? THEN 300 ELSE 0 END)');
+  params.push(lower);
+  parts.push('(CASE WHEN LOWER(p.brand) LIKE ? THEN 120 ELSE 0 END)');
+  params.push(`%${lower}%`);
+
+  for (const token of tokenizeSearch(raw)) {
+    const like = `%${token}%`;
+    parts.push('(CASE WHEN LOWER(p.title) LIKE ? THEN 40 ELSE 0 END)');
+    params.push(like);
+    parts.push('(CASE WHEN LOWER(p.brand) LIKE ? THEN 25 ELSE 0 END)');
+    params.push(like);
+    parts.push('(CASE WHEN LOWER(p.description) LIKE ? THEN 8 ELSE 0 END)');
+    params.push(like);
+  }
+
+  parts.push('p.views_count * 0.01');
+
+  return { expression: parts.join(' + '), params };
 }
 
 function mapListItem(row: mysql.RowDataPacket): ProductListItem {
@@ -143,6 +201,16 @@ export class ProductRepository implements IProductRepository {
       conditions.push('(p.title LIKE ? OR p.brand LIKE ?)');
       const term = `%${query.search.trim()}%`;
       params.push(term, term);
+    }
+    if (query.fulltext_q?.trim()) {
+      const tokens = tokenizeSearch(query.fulltext_q);
+      for (const token of tokens) {
+        const like = `%${token}%`;
+        conditions.push(
+          '(LOWER(p.title) LIKE ? OR LOWER(p.brand) LIKE ? OR LOWER(p.description) LIKE ? OR LOWER(p.color) LIKE ? OR LOWER(p.material) LIKE ?)',
+        );
+        params.push(like, like, like, like, like);
+      }
     }
 
     return {
@@ -359,32 +427,193 @@ export class ProductRepository implements IProductRepository {
     query: string,
     offset: number,
     limit: number,
+    filters: Omit<ProductListQuery, 'offset' | 'limit' | 'sort' | 'fulltext_q' | 'search'> = {},
+    sort = 'newest',
   ): Promise<{ products: ProductListItem[]; total: number }> {
     const term = query.trim();
-    const baseWhere = `WHERE p.status = 'ACTIVE'
-      AND MATCH(p.title, p.description) AGAINST(? IN NATURAL LANGUAGE MODE)`;
+    const { clause, params } = this.buildListWhere({
+      ...filters,
+      fulltext_q: term,
+      status: 'ACTIVE',
+      sort: 'newest',
+      offset: 0,
+      limit: 1,
+    });
 
     const [countRows] = await this.pool.query(
-      `SELECT COUNT(*) AS total FROM products p ${baseWhere}`,
-      [term],
+      `SELECT COUNT(*) AS total FROM products p ${clause}`,
+      params,
     );
     const total = Number((countRows as mysql.RowDataPacket[])[0]?.total ?? 0);
 
+    const relevance = buildRelevanceExpression(term);
+    const useRelevance = sort === 'newest';
+    const selectRelevance = useRelevance ? `, (${relevance.expression}) AS relevance` : '';
+    const orderBy = useRelevance
+      ? 'ORDER BY relevance DESC, p.created_at DESC'
+      : this.buildOrderBy(sort);
+    const selectParams = useRelevance ? relevance.params : [];
+
     const [rows] = await this.pool.query(
-      `SELECT p.*, pi.url AS primary_image, vl.region_id AS vendor_region_id,
-              MATCH(p.title, p.description) AGAINST(? IN NATURAL LANGUAGE MODE) AS relevance
+      `SELECT p.*, pi.url AS primary_image, vl.region_id AS vendor_region_id${selectRelevance}
        FROM products p
        LEFT JOIN product_images pi ON pi.product_id = p.id AND pi.is_primary = TRUE
        LEFT JOIN vendor_locations vl ON vl.vendor_id = p.vendor_id
-       ${baseWhere}
-       ORDER BY relevance DESC, p.created_at DESC
+       ${clause}
+       ${orderBy}
        LIMIT ? OFFSET ?`,
-      [term, term, limit, offset],
+      [...selectParams, ...params, limit, offset],
     );
 
     const products = (rows as mysql.RowDataPacket[]).map((row) => mapListItem(row));
 
     return { products, total };
+  }
+
+  async searchSuggest(query: string, limit: number): Promise<SearchSuggestion[]> {
+    const term = query.trim();
+    if (!term) return [];
+
+    const like = `%${term.toLowerCase()}%`;
+    const tokens = tokenizeSearch(term);
+
+    const { clause: matchClause, params: matchParams } = this.buildListWhere({
+      fulltext_q: term,
+      status: 'ACTIVE',
+      sort: 'newest',
+      offset: 0,
+      limit: 1,
+    });
+
+    const [countRows] = await this.pool.query(
+      `SELECT COUNT(*) AS total FROM products p ${matchClause}`,
+      matchParams,
+    );
+    const productCount = Number((countRows as mysql.RowDataPacket[])[0]?.total ?? 0);
+
+    const suggestions: SearchSuggestion[] = [];
+
+    if (productCount > 0) {
+      suggestions.push({ type: 'query', label: term, count: productCount });
+    }
+
+    const [brandRows] = await this.pool.query(
+      `SELECT p.brand AS label, COUNT(*) AS count
+       FROM products p
+       WHERE p.status = 'ACTIVE' AND p.brand IS NOT NULL AND TRIM(p.brand) <> ''
+         AND LOWER(p.brand) LIKE ?
+       GROUP BY p.brand
+       ORDER BY count DESC
+       LIMIT 4`,
+      [like],
+    );
+
+    for (const row of brandRows as mysql.RowDataPacket[]) {
+      suggestions.push({
+        type: 'brand',
+        label: row.label as string,
+        count: Number(row.count),
+      });
+    }
+
+    const [categoryRows] = await this.pool.query(
+      `SELECT c.name AS label, COUNT(p.id) AS count
+       FROM categories c
+       INNER JOIN products p ON p.category_id = c.id AND p.status = 'ACTIVE'
+       WHERE LOWER(c.name) LIKE ?
+       GROUP BY c.id, c.name
+       ORDER BY count DESC
+       LIMIT 3`,
+      [like],
+    );
+
+    for (const row of categoryRows as mysql.RowDataPacket[]) {
+      suggestions.push({
+        type: 'category',
+        label: row.label as string,
+        count: Number(row.count),
+      });
+    }
+
+    // Fall back to matching product titles so relevant items always surface,
+    // even when the query doesn't map to a known brand or category.
+    if (suggestions.filter((s) => s.type !== 'query').length < 3 && tokens.length > 0) {
+      const titleConditions = tokens
+        .map(() => 'LOWER(p.title) LIKE ?')
+        .join(' AND ');
+      const titleParams = tokens.map((token) => `%${token}%`);
+
+      const [titleRows] = await this.pool.query(
+        `SELECT p.title AS label
+         FROM products p
+         WHERE p.status = 'ACTIVE' AND ${titleConditions}
+         ORDER BY p.views_count DESC, p.created_at DESC
+         LIMIT 5`,
+        titleParams,
+      );
+
+      for (const row of titleRows as mysql.RowDataPacket[]) {
+        suggestions.push({ type: 'query', label: row.label as string, count: 0 });
+      }
+    }
+
+    const seen = new Set<string>();
+    const unique: SearchSuggestion[] = [];
+    for (const item of suggestions) {
+      if (!item.label) continue;
+      const key = `${item.type}:${item.label.toLowerCase()}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      unique.push(item);
+      if (unique.length >= limit) break;
+    }
+
+    return unique;
+  }
+
+  async getPopularSearchTerms(limit: number): Promise<string[]> {
+    const defaults = ['sacs', 'chaussures', 'vêtements', 'montres', 'lunettes'];
+    const terms: string[] = [];
+
+    const [brandRows] = await this.pool.query(
+      `SELECT p.brand AS term
+       FROM products p
+       WHERE p.status = 'ACTIVE' AND p.brand IS NOT NULL AND TRIM(p.brand) <> ''
+       GROUP BY p.brand
+       ORDER BY COUNT(*) DESC
+       LIMIT ?`,
+      [Math.ceil(limit / 2)],
+    );
+
+    for (const row of brandRows as mysql.RowDataPacket[]) {
+      const value = (row.term as string).trim();
+      if (value) terms.push(value);
+    }
+
+    const [categoryRows] = await this.pool.query(
+      `SELECT c.name AS term
+       FROM categories c
+       INNER JOIN products p ON p.category_id = c.id AND p.status = 'ACTIVE'
+       GROUP BY c.id, c.name
+       ORDER BY COUNT(p.id) DESC
+       LIMIT ?`,
+      [Math.floor(limit / 2)],
+    );
+
+    for (const row of categoryRows as mysql.RowDataPacket[]) {
+      const value = (row.term as string).trim();
+      if (value) terms.push(value);
+    }
+
+    const seen = new Set<string>();
+    const merged = [...terms, ...defaults].filter((term) => {
+      const key = term.toLowerCase();
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+
+    return merged.slice(0, limit);
   }
 
   async findTrending(limit: number): Promise<ProductListItem[]> {

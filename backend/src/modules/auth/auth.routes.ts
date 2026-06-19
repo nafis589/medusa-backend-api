@@ -24,14 +24,20 @@ const authService = new AuthService(userRepository, cartService);
  */
 router.post('/register', validate(RegisterSchema), async (req, res, next) => {
   try {
-    const { email, password, first_name, last_name } = req.body as z.infer<typeof RegisterSchema>;
-    const result = await authService.register({
-      email,
-      password,
-      first_name,
-      last_name,
-      role: 'BUYER',
-    });
+    const { email, password, first_name, last_name, session_id } = req.body as z.infer<
+      typeof RegisterSchema
+    >;
+    const sessionId = session_id ?? (req.cookies?.session_id as string | undefined);
+    const result = await authService.register(
+      {
+        email,
+        password,
+        first_name,
+        last_name,
+        role: 'BUYER',
+      },
+      sessionId,
+    );
     res.status(201).json({ data: result });
   } catch (err) {
     next(err);

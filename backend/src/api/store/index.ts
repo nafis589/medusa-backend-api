@@ -24,6 +24,10 @@ router.use('/products', productRoutes);
 router.use('/search', productSearchRoutes);
 router.use('/trending', productTrendingRoutes);
 
+// ── Vendor public storefront routes ───────────────────────────────────────
+import storeVendorRoutes from '@modules/vendor/store-vendor.routes';
+router.use('/vendors', storeVendorRoutes);
+
 // ── Cart routes (Phase 5) ─────────────────────────────────────────────────
 import cartRoutes from './cart';
 router.use('/cart', cartRoutes);

@@ -31,8 +31,8 @@ async function main(): Promise<void> {
   }
 
   // Phase 2 — Admin user
-  // const { seedAdminUser } = await import('./admin-user.seed');
-  // await seedAdminUser();
+  const { seedAdminUser } = await import('./admin-user.seed');
+  await seedAdminUser();
 
   await closePool();
   console.log('✅ All seeds completed');

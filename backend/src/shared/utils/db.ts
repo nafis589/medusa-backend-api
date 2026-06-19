@@ -328,6 +328,20 @@ export async function initializeDatabase(): Promise<void> {
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
   `);
 
+  // Create vendor_follows table (storefront — vendor profile follow feature)
+  await dbPool.query(`
+    CREATE TABLE IF NOT EXISTS vendor_follows (
+      id CHAR(36) PRIMARY KEY,
+      follower_id CHAR(36) NOT NULL,
+      vendor_id CHAR(36) NOT NULL,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (follower_id) REFERENCES users(id) ON DELETE CASCADE,
+      FOREIGN KEY (vendor_id) REFERENCES vendors(id) ON DELETE CASCADE,
+      UNIQUE KEY uk_follower_vendor (follower_id, vendor_id),
+      INDEX idx_vendor_follows_vendor (vendor_id)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+  `);
+
   logger.info('Database schema tables verified successfully.');
 }
 
@@ -337,6 +351,7 @@ export async function initializeDatabase(): Promise<void> {
 export async function clearDatabase(): Promise<void> {
   const dbPool = getPool();
   await dbPool.query('SET FOREIGN_KEY_CHECKS = 0;');
+  await dbPool.query('TRUNCATE TABLE vendor_follows;');
   await dbPool.query('TRUNCATE TABLE notifications;');
   await dbPool.query('TRUNCATE TABLE order_status_history;');
   await dbPool.query('TRUNCATE TABLE order_items;');

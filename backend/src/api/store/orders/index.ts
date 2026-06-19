@@ -17,7 +17,7 @@ const router = Router();
 const service = createOrderService();
 
 router.use(authenticate);
-router.use(authorize('BUYER'));
+router.use(authorize('BUYER', 'VENDOR'));
 
 /**
  * POST /api/store/orders

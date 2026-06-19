@@ -49,6 +49,14 @@ export interface ProductFilterFacets {
   price: { min: number; max: number } | null;
 }
 
+export type SearchSuggestionType = 'query' | 'brand' | 'category';
+
+export interface SearchSuggestion {
+  type: SearchSuggestionType;
+  label: string;
+  count: number;
+}
+
 export interface ProductVendorSummary {
   shop_name: string;
   rating: number;

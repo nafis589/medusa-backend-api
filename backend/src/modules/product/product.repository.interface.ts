@@ -1,5 +1,11 @@
 import type { Product, ProductStatus, UpdateProductData } from './product.entity';
-import type { ProductListItem, ProductReview, ProductVendorSummary, ProductFilterFacets } from './product.types';
+import type {
+  ProductListItem,
+  ProductReview,
+  ProductVendorSummary,
+  ProductFilterFacets,
+  SearchSuggestion,
+} from './product.types';
 import type { PoolConnection } from 'mysql2/promise';
 
 export interface ProductListQuery {
@@ -22,6 +28,7 @@ export interface ProductListQuery {
   tag?: 'offer' | 'we_love';
   low_stock?: boolean;
   search?: string;
+  fulltext_q?: string;
 }
 
 export interface VendorContact {
@@ -52,7 +59,11 @@ export interface IProductRepository {
     query: string,
     offset: number,
     limit: number,
+    filters?: Omit<ProductListQuery, 'offset' | 'limit' | 'sort' | 'fulltext_q' | 'search'>,
+    sort?: string,
   ): Promise<{ products: ProductListItem[]; total: number }>;
+  searchSuggest(query: string, limit: number): Promise<SearchSuggestion[]>;
+  getPopularSearchTerms(limit: number): Promise<string[]>;
   findTrending(limit: number): Promise<ProductListItem[]>;
   getFilterFacets(scope: ProductListQuery): Promise<ProductFilterFacets>;
   findVendorContactByProductId(productId: string): Promise<VendorContact | null>;

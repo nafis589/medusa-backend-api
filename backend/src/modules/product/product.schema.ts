@@ -29,10 +29,40 @@ export const ProductListQuerySchema = z.object({
   tag: z.enum(['offer', 'we_love']).optional(),
 });
 
-export const ProductSearchQuerySchema = z.object({
-  q: z.string().min(2, 'Search query must be at least 2 characters'),
-  page: z.coerce.number().int().min(1).default(1).optional(),
-  limit: z.coerce.number().int().min(1).max(50).default(24).optional(),
+const searchFilterFields = {
+  condition: productCondition.optional(),
+  color: z.string().max(50).optional(),
+  size: z.string().max(20).optional(),
+  material: z.string().max(100).optional(),
+  brand: z.string().max(100).optional(),
+  price_min: z.coerce.number().int().min(0).optional(),
+  price_max: z.coerce.number().int().min(0).optional(),
+  sort: productSort.default('newest').optional(),
+};
+
+export const ProductSearchQuerySchema = z
+  .object({
+    q: z.string().min(1).max(100),
+    page: z.coerce.number().int().min(1).default(1).optional(),
+    limit: z.coerce.number().int().min(1).max(50).default(24).optional(),
+    suggest: z
+      .enum(['true', 'false'])
+      .optional()
+      .transform((v) => v === 'true'),
+    ...searchFilterFields,
+  })
+  .superRefine((data, ctx) => {
+    if (!data.suggest && data.q.trim().length < 2) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'Search query must be at least 2 characters',
+        path: ['q'],
+      });
+    }
+  });
+
+export const ProductSearchFiltersQuerySchema = z.object({
+  q: z.string().min(2).max(100),
 });
 
 export const ProductFilterScopeQuerySchema = ProductListQuerySchema.pick({
@@ -95,6 +125,7 @@ export const RejectProductSchema = z.object({
 export type ProductListQueryInput = z.infer<typeof ProductListQuerySchema>;
 export type ProductFilterScopeQueryInput = z.infer<typeof ProductFilterScopeQuerySchema>;
 export type ProductSearchQueryInput = z.infer<typeof ProductSearchQuerySchema>;
+export type ProductSearchFiltersQueryInput = z.infer<typeof ProductSearchFiltersQuerySchema>;
 export type CreateProductBody = z.infer<typeof CreateProductSchema>;
 export type UpdateProductBody = z.infer<typeof UpdateProductSchema>;
 export type AdminProductListQueryInput = z.infer<typeof AdminProductListQuerySchema>;

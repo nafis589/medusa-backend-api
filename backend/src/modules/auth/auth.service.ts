@@ -25,7 +25,10 @@ export class AuthService {
     private readonly cartService?: CartService,
   ) {}
 
-  async register(data: Omit<CreateUserData, 'password_hash'> & { password: string }): Promise<{
+  async register(
+    data: Omit<CreateUserData, 'password_hash'> & { password: string },
+    sessionId?: string,
+  ): Promise<{
     user: Omit<User, 'password_hash'>;
     accessToken: string;
     refreshToken: string;
@@ -54,6 +57,10 @@ export class AuthService {
     // 4. Generate tokens
     const accessToken = signToken({ id: user.id, email: user.email, role: user.role });
     const refreshToken = signRefreshToken({ id: user.id });
+
+    if (sessionId && this.cartService) {
+      await this.cartService.mergeGuestCart(sessionId, user.id);
+    }
 
     return {
       user: omitPassword(user),
