@@ -19,6 +19,7 @@ import type {
 
 export interface PlaceOrderInput {
   buyerId: string;
+  buyerVendorId?: string;
   shippingAddress: ShippingAddress;
   shippingFee: number;
   shippingMethod: ShippingMethod;
@@ -66,6 +67,13 @@ export class PlaceOrderWorkflow {
       const product = await this.productRepo.findById(item.product_id);
       if (!product || product.status !== 'ACTIVE') {
         throw new AppError(400, 'PRODUCT_NOT_AVAILABLE', 'Product is not available');
+      }
+      if (input.buyerVendorId && product.vendor_id === input.buyerVendorId) {
+        throw new AppError(
+          403,
+          'CANNOT_BUY_OWN_PRODUCT',
+          'Votre panier contient un de vos propres articles.',
+        );
       }
       if (product.stock < item.quantity) {
         throw new AppError(400, 'INSUFFICIENT_STOCK', 'Insufficient stock for this product');

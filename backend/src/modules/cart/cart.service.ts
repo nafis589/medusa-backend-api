@@ -35,7 +35,12 @@ export class CartService {
     return this.buildCartWithItems(cart);
   }
 
-  async addItem(cartId: string, productId: string, quantity: number): Promise<CartItem> {
+  async addItem(
+    cartId: string,
+    productId: string,
+    quantity: number,
+    buyerVendorId?: string,
+  ): Promise<CartItem> {
     if (quantity < 1) {
       throw AppError.badRequest('Quantity must be at least 1');
     }
@@ -43,6 +48,14 @@ export class CartService {
     const product = await this.productRepo.findActiveById(productId);
     if (!product) {
       throw new AppError(400, 'PRODUCT_NOT_AVAILABLE', 'Product is not available');
+    }
+
+    if (buyerVendorId && product.vendor_id === buyerVendorId) {
+      throw new AppError(
+        403,
+        'CANNOT_BUY_OWN_PRODUCT',
+        'Vous ne pouvez pas acheter vos propres articles.',
+      );
     }
 
     if (product.stock <= 0) {

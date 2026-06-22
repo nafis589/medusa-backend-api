@@ -34,4 +34,8 @@ router.use('/profile', vendorProfileRoutes);
 import vendorStatsRoutes from '@modules/vendor/vendor-stats.routes';
 router.use('/stats', vendorStatsRoutes);
 
+// ── Vendor offers ───────────────────────────────────────────────────────────
+import vendorOfferRoutes from '@modules/offer/vendor-offer.routes';
+router.use('/offers', vendorOfferRoutes);
+
 export default router;

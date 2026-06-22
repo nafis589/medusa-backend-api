@@ -17,6 +17,18 @@ export interface OrderStatusChangedEvent {
   note?: string | null;
 }
 
+export interface OfferEventPayload {
+  offerId: string;
+  productId: string;
+  productTitle: string;
+  buyerId: string;
+  vendorId: string;
+  amount: number;
+  counterAmount?: number | null;
+  /** Who should receive the in-app + socket notification */
+  recipient: 'buyer' | 'vendor';
+}
+
 class AppEventBus extends EventEmitter {
   emitOrderPlaced(payload: OrderPlacedEvent): void {
     this.emit('order.placed', payload);
@@ -28,6 +40,22 @@ class AppEventBus extends EventEmitter {
 
   emitOrderStatusChanged(payload: OrderStatusChangedEvent): void {
     this.emit('order.status_changed', payload);
+  }
+
+  emitOfferNew(payload: OfferEventPayload): void {
+    this.emit('offer.new', payload);
+  }
+
+  emitOfferAccepted(payload: OfferEventPayload): void {
+    this.emit('offer.accepted', payload);
+  }
+
+  emitOfferDeclined(payload: OfferEventPayload): void {
+    this.emit('offer.declined', payload);
+  }
+
+  emitOfferCounter(payload: OfferEventPayload): void {
+    this.emit('offer.counter', payload);
   }
 }
 

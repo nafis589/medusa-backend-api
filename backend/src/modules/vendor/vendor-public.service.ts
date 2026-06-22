@@ -2,6 +2,7 @@ import { AppError } from '@shared/errors/app-error';
 import { createProductService } from '@modules/product/product.factory';
 import type { ProductStatus } from '@modules/product/product.entity';
 import { VendorPublicRepository, type VendorPublicProfile } from './vendor-public.repository';
+import { findVendorIdByUserId } from './vendor.util';
 
 export class VendorPublicService {
   constructor(
@@ -38,6 +39,15 @@ export class VendorPublicService {
     followerId: string,
     id: string,
   ): Promise<{ isFollowing: boolean; followers_count: number }> {
+    const followerVendorId = await findVendorIdByUserId(followerId);
+    if (followerVendorId && followerVendorId === id) {
+      throw new AppError(
+        403,
+        'CANNOT_FOLLOW_YOURSELF',
+        'Vous ne pouvez pas vous suivre vous-même.',
+      );
+    }
+
     const vendorId = await this.repo.findActiveVendorId(id);
     if (!vendorId) {
       throw new AppError(404, 'VENDOR_NOT_FOUND', 'Vendor not found');

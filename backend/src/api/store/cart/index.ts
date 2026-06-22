@@ -9,6 +9,7 @@ import {
 } from './cart.schema';
 import { createResolveCartMiddleware } from './resolve-cart.middleware';
 import { mapCartResponse } from './cart.mapper';
+import { findVendorIdByUserId } from '@modules/vendor/vendor.util';
 
 const router = Router();
 const cartService = createCartService();
@@ -36,7 +37,13 @@ router.get('/', async (req, res, next) => {
 router.post('/items', validate(AddCartItemSchema), async (req, res, next) => {
   try {
     const { product_id, quantity } = req.body as z.infer<typeof AddCartItemSchema>;
-    await cartService.addItem(req.cart!.id, product_id, quantity);
+
+    let buyerVendorId: string | undefined;
+    if (req.user?.role === 'VENDOR') {
+      buyerVendorId = (await findVendorIdByUserId(req.user.id)) ?? undefined;
+    }
+
+    await cartService.addItem(req.cart!.id, product_id, quantity, buyerVendorId);
 
     const userId = req.user?.id;
     const sessionId = userId ? undefined : req.cartSessionId;

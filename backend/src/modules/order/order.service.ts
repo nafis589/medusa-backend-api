@@ -13,6 +13,7 @@ import type { Order } from './order.entity';
 import type { OrderStatus } from './order.types';
 import type { PlaceOrderBody } from './order.schema';
 import type { OrderDetail, OrderListResult } from './order.service.types';
+import { findVendorIdByUserId } from '@modules/vendor/vendor.util';
 
 const ALLOWED_TRANSITIONS: Record<OrderStatus, OrderStatus[]> = {
   PENDING: ['CONFIRMED', 'CANCELLED'],
@@ -34,8 +35,10 @@ export class OrderService {
   ) {}
 
   async placeOrder(buyerId: string, body: PlaceOrderBody): Promise<Order[]> {
+    const buyerVendorId = (await findVendorIdByUserId(buyerId)) ?? undefined;
     const result = await this.placeOrderWorkflow.execute({
       buyerId,
+      buyerVendorId,
       shippingAddress: body.shipping_address,
       shippingFee: body.shipping_fee,
       shippingMethod: body.shipping_method,

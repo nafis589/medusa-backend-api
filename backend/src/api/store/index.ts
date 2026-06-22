@@ -36,6 +36,14 @@ router.use('/cart', cartRoutes);
 import orderRoutes from './orders';
 router.use('/orders', orderRoutes);
 
+// ── Conversation / chat routes ────────────────────────────────────────────
+import conversationRoutes from './conversations';
+router.use('/conversations', conversationRoutes);
+
+// ── Offer routes ──────────────────────────────────────────────────────────
+import offerRoutes from './offers';
+router.use('/offers', offerRoutes);
+
 // ── Shipping routes (Phase 3) ─────────────────────────────────────────────
 import shippingRoutes from '@modules/shipping/shipping.routes';
 router.use('/shipping', shippingRoutes);

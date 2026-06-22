@@ -342,6 +342,63 @@ export async function initializeDatabase(): Promise<void> {
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
   `);
 
+  // Create conversations table (storefront — buyer/vendor chat)
+  await dbPool.query(`
+    CREATE TABLE IF NOT EXISTS conversations (
+      id CHAR(36) PRIMARY KEY,
+      buyer_id CHAR(36) NOT NULL,
+      vendor_id CHAR(36) NOT NULL,
+      product_id CHAR(36) NULL,
+      last_message_at TIMESTAMP NULL,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (buyer_id) REFERENCES users(id) ON DELETE CASCADE,
+      FOREIGN KEY (vendor_id) REFERENCES vendors(id) ON DELETE CASCADE,
+      FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE SET NULL,
+      INDEX idx_conversation_buyer (buyer_id),
+      INDEX idx_conversation_vendor (vendor_id),
+      INDEX idx_conversation_pair (buyer_id, vendor_id, product_id)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+  `);
+
+  // Create messages table (storefront — chat messages)
+  await dbPool.query(`
+    CREATE TABLE IF NOT EXISTS messages (
+      id CHAR(36) PRIMARY KEY,
+      conversation_id CHAR(36) NOT NULL,
+      sender_id CHAR(36) NOT NULL,
+      content TEXT NOT NULL,
+      type ENUM('TEXT', 'OFFER', 'SYSTEM') DEFAULT 'TEXT' NOT NULL,
+      is_read BOOLEAN DEFAULT FALSE NOT NULL,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (conversation_id) REFERENCES conversations(id) ON DELETE CASCADE,
+      FOREIGN KEY (sender_id) REFERENCES users(id) ON DELETE CASCADE,
+      INDEX idx_message_conversation (conversation_id, created_at)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+  `);
+
+  // Create offers table (storefront — price negotiation)
+  await dbPool.query(`
+    CREATE TABLE IF NOT EXISTS offers (
+      id CHAR(36) PRIMARY KEY,
+      product_id CHAR(36) NOT NULL,
+      buyer_id CHAR(36) NOT NULL,
+      vendor_id CHAR(36) NOT NULL,
+      amount INT NOT NULL,
+      status ENUM('PENDING', 'ACCEPTED', 'DECLINED', 'COUNTER', 'EXPIRED') DEFAULT 'PENDING' NOT NULL,
+      counter_amount INT NULL,
+      expires_at TIMESTAMP NOT NULL,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE,
+      FOREIGN KEY (buyer_id) REFERENCES users(id) ON DELETE CASCADE,
+      FOREIGN KEY (vendor_id) REFERENCES vendors(id) ON DELETE CASCADE,
+      INDEX idx_offer_buyer (buyer_id),
+      INDEX idx_offer_vendor (vendor_id),
+      INDEX idx_offer_product (product_id),
+      INDEX idx_offer_status (status)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+  `);
+
   logger.info('Database schema tables verified successfully.');
 }
 
@@ -351,6 +408,9 @@ export async function initializeDatabase(): Promise<void> {
 export async function clearDatabase(): Promise<void> {
   const dbPool = getPool();
   await dbPool.query('SET FOREIGN_KEY_CHECKS = 0;');
+  await dbPool.query('TRUNCATE TABLE messages;');
+  await dbPool.query('TRUNCATE TABLE conversations;');
+  await dbPool.query('TRUNCATE TABLE offers;');
   await dbPool.query('TRUNCATE TABLE vendor_follows;');
   await dbPool.query('TRUNCATE TABLE notifications;');
   await dbPool.query('TRUNCATE TABLE order_status_history;');
