@@ -1,0 +1,59 @@
+import { Router } from 'express';
+import { rateLimit } from '@shared/middlewares/rate-limit';
+
+const router = Router();
+
+// Public rate-limit: 300 req/min per IP (storefront pages fire several calls each)
+router.use(rateLimit({ windowMs: 60 * 1000, max: 300 }));
+
+// ── Auth routes (Phase 2) ──────────────────────────────────────────────────
+import authRoutes from '../../modules/auth/auth.routes';
+import profileRoutes from '../../modules/auth/profile.routes';
+router.use('/auth', authRoutes);
+router.use('/profile', profileRoutes);
+
+// ── Category routes (Phase 1) ─────────────────────────────────────────────
+import categoryRoutes from '@modules/category/category.routes';
+router.use('/categories', categoryRoutes);
+
+// ── Product routes (Phase 4) ──────────────────────────────────────────────
+import productRoutes from '@modules/product/product.routes';
+import productSearchRoutes from '@modules/product/product-search.routes';
+import productTrendingRoutes from '@modules/product/product-trending.routes';
+router.use('/products', productRoutes);
+router.use('/search', productSearchRoutes);
+router.use('/trending', productTrendingRoutes);
+
+// ── Vendor public storefront routes ───────────────────────────────────────
+import storeVendorRoutes from '@modules/vendor/store-vendor.routes';
+router.use('/vendors', storeVendorRoutes);
+
+// ── Cart routes (Phase 5) ─────────────────────────────────────────────────
+import cartRoutes from './cart';
+router.use('/cart', cartRoutes);
+
+// ── Order routes (Phase 6) ────────────────────────────────────────────────
+import orderRoutes from './orders';
+router.use('/orders', orderRoutes);
+
+// ── Conversation / chat routes ────────────────────────────────────────────
+import conversationRoutes from './conversations';
+router.use('/conversations', conversationRoutes);
+
+// ── Offer routes ──────────────────────────────────────────────────────────
+import offerRoutes from './offers';
+router.use('/offers', offerRoutes);
+
+// ── Shipping routes (Phase 3) ─────────────────────────────────────────────
+import shippingRoutes from '@modules/shipping/shipping.routes';
+router.use('/shipping', shippingRoutes);
+
+// ── Notification routes (Phase 9) ─────────────────────────────────────────
+import notificationRoutes from '@modules/notification/notification.routes';
+router.use('/notifications', notificationRoutes);
+
+// ── Recommendation routes (Phase 11) ──────────────────────────────────────
+// import recommendationRoutes from '@modules/recommendation/recommendation.routes';
+// router.use('/recommendations', recommendationRoutes);
+
+export default router;
