@@ -7,6 +7,10 @@ export interface OrderItem {
   product_id: string | null;
   quantity: number;
   unit_price: number;
+  /** Accepted-offer id when this line was purchased through a negotiated offer. */
+  offer_id: string | null;
+  /** Original product price when discounted via an offer (for struck-through display). */
+  original_price: number | null;
   product_snapshot: ProductSnapshot;
 }
 
@@ -16,5 +20,7 @@ export interface CreateOrderItemData {
   product_id: string | null;
   quantity: number;
   unit_price: number;
+  offer_id?: string | null;
+  original_price?: number | null;
   product_snapshot: ProductSnapshot;
 }

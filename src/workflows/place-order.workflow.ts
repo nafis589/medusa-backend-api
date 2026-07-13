@@ -8,6 +8,7 @@ import type { IProductRepository } from '@modules/product/product.repository.int
 import type { IOrderRepository } from '@modules/order/order.repository.interface';
 import type { IOrderItemRepository } from '@modules/order/order-item.repository.interface';
 import type { IOrderStatusHistoryRepository } from '@modules/order/order-status-history.repository.interface';
+import type { IOfferRepository } from '@modules/offer/offer.repository.interface';
 import type { Order } from '@modules/order/order.entity';
 import type { Product } from '@modules/product/product.entity';
 import type { CartItemWithProduct } from '@modules/cart/cart.types';
@@ -52,6 +53,7 @@ export class PlaceOrderWorkflow {
     private readonly orderItemRepo: IOrderItemRepository,
     private readonly orderStatusHistoryRepo: IOrderStatusHistoryRepository,
     private readonly cartItemRepo: ICartItemRepository,
+    private readonly offerRepo?: IOfferRepository,
   ) {}
 
   async execute(input: PlaceOrderInput): Promise<PlaceOrderResult> {
@@ -78,6 +80,25 @@ export class PlaceOrderWorkflow {
       if (product.stock < item.quantity) {
         throw new AppError(400, 'INSUFFICIENT_STOCK', 'Insufficient stock for this product');
       }
+
+      if (item.offer_id) {
+        if (!this.offerRepo) {
+          throw new AppError(500, 'OFFER_REPO_UNAVAILABLE', 'Offer support is not configured');
+        }
+        const offer = await this.offerRepo.findById(item.offer_id);
+        if (
+          !offer ||
+          offer.buyer_id !== input.buyerId ||
+          offer.product_id !== item.product_id ||
+          offer.status !== 'ACCEPTED'
+        ) {
+          throw new AppError(400, 'OFFER_INVALID', 'Cette offre n\'est plus valable.');
+        }
+        if (offer.consumed_at) {
+          throw new AppError(400, 'OFFER_ALREADY_USED', 'Cette offre a déjà été commandée.');
+        }
+      }
+
       productById.set(item.product_id, product);
     }
 
@@ -147,6 +168,8 @@ export class PlaceOrderWorkflow {
               product_id: item.product_id,
               quantity: item.quantity,
               unit_price: item.price_snapshot,
+              offer_id: item.offer_id,
+              original_price: item.offer_id ? product.price : null,
               product_snapshot: {
                 title: item.product.title,
                 image: item.product.primary_image,
@@ -155,6 +178,10 @@ export class PlaceOrderWorkflow {
             },
             connection,
           );
+
+          if (item.offer_id && this.offerRepo) {
+            await this.offerRepo.markConsumed(item.offer_id, connection);
+          }
         }
 
         await this.orderStatusHistoryRepo.create(

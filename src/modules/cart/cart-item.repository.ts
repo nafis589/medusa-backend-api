@@ -14,6 +14,7 @@ function mapCartItem(row: mysql.RowDataPacket): CartItem {
     product_id: row.product_id as string,
     quantity: Number(row.quantity),
     price_snapshot: Number(row.price_snapshot),
+    offer_id: (row.offer_id as string | null) ?? null,
   };
 }
 
@@ -82,15 +83,48 @@ export class CartItemRepository implements ICartItemRepository {
 
   async create(data: CreateCartItemData & { id: string }): Promise<CartItem> {
     await this.pool.query(
-      `INSERT INTO cart_items (id, cart_id, product_id, quantity, price_snapshot)
-       VALUES (?, ?, ?, ?, ?)`,
-      [data.id, data.cart_id, data.product_id, data.quantity, data.price_snapshot],
+      `INSERT INTO cart_items (id, cart_id, product_id, quantity, price_snapshot, offer_id)
+       VALUES (?, ?, ?, ?, ?, ?)`,
+      [
+        data.id,
+        data.cart_id,
+        data.product_id,
+        data.quantity,
+        data.price_snapshot,
+        data.offer_id ?? null,
+      ],
     );
     const created = await this.findById(data.id);
     if (!created) {
       throw new Error(`Failed to find created cart item with id: ${data.id}`);
     }
     return created;
+  }
+
+  async upsertOfferItem(data: {
+    id: string;
+    cart_id: string;
+    product_id: string;
+    price_snapshot: number;
+    offer_id: string;
+  }): Promise<CartItem> {
+    // One product per cart (uk_cart_product) — replace any existing line so the
+    // accepted-offer price and offer link take precedence, quantity forced to 1.
+    await this.pool.query(
+      `INSERT INTO cart_items (id, cart_id, product_id, quantity, price_snapshot, offer_id)
+       VALUES (?, ?, ?, 1, ?, ?)
+       ON DUPLICATE KEY UPDATE
+         quantity = 1,
+         price_snapshot = VALUES(price_snapshot),
+         offer_id = VALUES(offer_id)`,
+      [data.id, data.cart_id, data.product_id, data.price_snapshot, data.offer_id],
+    );
+
+    const item = await this.findByCartAndProduct(data.cart_id, data.product_id);
+    if (!item) {
+      throw new Error(`Failed to upsert offer cart item for product: ${data.product_id}`);
+    }
+    return item;
   }
 
   async updateQuantity(id: string, quantity: number): Promise<CartItem> {

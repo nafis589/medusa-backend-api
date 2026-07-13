@@ -1,6 +1,7 @@
 import { randomUUID } from 'crypto';
 import { AppError } from '@shared/errors/app-error';
 import type { IProductRepository } from '@modules/product/product.repository.interface';
+import type { IOfferRepository } from '@modules/offer/offer.repository.interface';
 import type { ICartRepository } from './cart.repository.interface';
 import type { ICartItemRepository } from './cart-item.repository.interface';
 import type { Cart } from './cart.entity';
@@ -12,6 +13,7 @@ export class CartService {
     private readonly cartRepo: ICartRepository,
     private readonly cartItemRepo: ICartItemRepository,
     private readonly productRepo: IProductRepository,
+    private readonly offerRepo?: IOfferRepository,
   ) {}
 
   async getOrCreate(userId?: string, sessionId?: string): Promise<Cart> {
@@ -73,6 +75,43 @@ export class CartService {
       product_id: productId,
       quantity,
       price_snapshot: product.price,
+    });
+  }
+
+  /**
+   * Adds the product tied to an accepted offer to the cart at the agreed price.
+   * The offer must belong to the buyer, be ACCEPTED and not already consumed.
+   */
+  async addOfferItem(cartId: string, buyerId: string, offerId: string): Promise<CartItem> {
+    if (!this.offerRepo) {
+      throw new AppError(500, 'OFFER_REPO_UNAVAILABLE', 'Offer support is not configured');
+    }
+
+    const offer = await this.offerRepo.findById(offerId);
+    if (!offer || offer.buyer_id !== buyerId) {
+      throw new AppError(404, 'OFFER_NOT_FOUND', 'Offer not found');
+    }
+    if (offer.status !== 'ACCEPTED') {
+      throw new AppError(400, 'OFFER_NOT_ACCEPTED', 'Cette offre n\'est pas acceptée.');
+    }
+    if (offer.consumed_at) {
+      throw new AppError(400, 'OFFER_ALREADY_USED', 'Cette offre a déjà été commandée.');
+    }
+
+    const product = await this.productRepo.findActiveById(offer.product_id);
+    if (!product) {
+      throw new AppError(400, 'PRODUCT_NOT_AVAILABLE', 'Product is not available');
+    }
+    if (product.stock <= 0) {
+      throw new AppError(400, 'OUT_OF_STOCK', 'Product is out of stock');
+    }
+
+    return this.cartItemRepo.upsertOfferItem({
+      id: randomUUID(),
+      cart_id: cartId,
+      product_id: offer.product_id,
+      price_snapshot: offer.amount,
+      offer_id: offer.id,
     });
   }
 

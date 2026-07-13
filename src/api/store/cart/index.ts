@@ -4,9 +4,11 @@ import { createCartService } from '@modules/cart/cart.factory';
 import { validate, validateParams } from '@shared/middlewares/validate';
 import {
   AddCartItemSchema,
+  AddOfferCartItemSchema,
   UpdateCartItemSchema,
   CartItemIdSchema,
 } from './cart.schema';
+import { AppError } from '@shared/errors/app-error';
 import { createResolveCartMiddleware } from './resolve-cart.middleware';
 import { mapCartResponse } from './cart.mapper';
 import { findVendorIdByUserId } from '@modules/vendor/vendor.util';
@@ -48,6 +50,26 @@ router.post('/items', validate(AddCartItemSchema), async (req, res, next) => {
     const userId = req.user?.id;
     const sessionId = userId ? undefined : req.cartSessionId;
     const cart = await cartService.getCart(userId, sessionId);
+    res.status(201).json({ data: mapCartResponse(cart) });
+  } catch (err) {
+    next(err);
+  }
+});
+
+/**
+ * POST /api/store/cart/offer-items
+ * Adds the product of an accepted offer to the cart at the agreed price.
+ */
+router.post('/offer-items', validate(AddOfferCartItemSchema), async (req, res, next) => {
+  try {
+    if (!req.user?.id) {
+      throw new AppError(401, 'UNAUTHORIZED', 'Vous devez être connecté pour commander une offre.');
+    }
+    const { offer_id } = req.body as z.infer<typeof AddOfferCartItemSchema>;
+
+    await cartService.addOfferItem(req.cart!.id, req.user.id, offer_id);
+
+    const cart = await cartService.getCart(req.user.id, undefined);
     res.status(201).json({ data: mapCartResponse(cart) });
   } catch (err) {
     next(err);

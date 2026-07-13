@@ -22,6 +22,8 @@ function mapOrderItem(row: mysql.RowDataPacket): OrderItem {
     product_id: (row.product_id as string | null) ?? null,
     quantity: Number(row.quantity),
     unit_price: Number(row.unit_price),
+    offer_id: (row.offer_id as string | null) ?? null,
+    original_price: row.original_price != null ? Number(row.original_price) : null,
     product_snapshot: parseJson<ProductSnapshot>(row.product_snapshot),
   };
 }
@@ -45,14 +47,17 @@ export class OrderItemRepository implements IOrderItemRepository {
   ): Promise<OrderItem> {
     const db = connection ?? this.pool;
     await db.query(
-      `INSERT INTO order_items (id, order_id, product_id, quantity, unit_price, product_snapshot)
-       VALUES (?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO order_items
+         (id, order_id, product_id, quantity, unit_price, offer_id, original_price, product_snapshot)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         data.id,
         data.order_id,
         data.product_id,
         data.quantity,
         data.unit_price,
+        data.offer_id ?? null,
+        data.original_price ?? null,
         JSON.stringify(data.product_snapshot),
       ],
     );

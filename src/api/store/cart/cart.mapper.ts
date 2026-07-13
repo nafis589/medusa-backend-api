@@ -10,6 +10,7 @@ export function mapCartResponse(cart: CartWithItems) {
       product_id: item.product_id,
       quantity: item.quantity,
       price_snapshot: item.price_snapshot,
+      offer_id: item.offer_id,
       product: item.product,
     })),
     total: cart.total,

@@ -11,6 +11,8 @@ export interface Offer {
   expires_at: Date;
   created_at: Date;
   updated_at: Date;
+  /** Set once an order has been placed from this accepted offer. */
+  consumed_at: Date | null;
 }
 
 export interface CreateOfferData {
@@ -28,4 +30,5 @@ export interface OfferListRow extends Offer {
   product_price: number;
   product_image: string | null;
   shop_name: string;
+  buyer_name: string;
 }

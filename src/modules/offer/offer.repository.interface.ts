@@ -1,3 +1,4 @@
+import type { PoolConnection } from 'mysql2/promise';
 import type { CreateOfferData, Offer, OfferListRow, OfferStatus } from './offer.entity';
 
 export interface IOfferRepository {
@@ -11,5 +12,12 @@ export interface IOfferRepository {
   ): Promise<Offer>;
   listByBuyer(buyerId: string): Promise<OfferListRow[]>;
   listByVendor(vendorId: string): Promise<OfferListRow[]>;
+  listByVendorPaginated(
+    vendorId: string,
+    status: OfferStatus | undefined,
+    offset: number,
+    limit: number,
+  ): Promise<{ rows: OfferListRow[]; total: number }>;
   expireStale(): Promise<void>;
+  markConsumed(id: string, connection?: PoolConnection): Promise<void>;
 }

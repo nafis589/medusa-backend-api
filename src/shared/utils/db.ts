@@ -399,7 +399,109 @@ export async function initializeDatabase(): Promise<void> {
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
   `);
 
+  // Migrate products.rating_avg column (Phase 10 — reviews)
+  const [ratingAvgCols] = await dbPool.query<mysql.RowDataPacket[]>(
+    `SELECT COUNT(*) AS cnt FROM information_schema.COLUMNS
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'products' AND COLUMN_NAME = 'rating_avg'`,
+  );
+  if (Number(ratingAvgCols[0]?.cnt) === 0) {
+    try {
+      await dbPool.query(
+        'ALTER TABLE products ADD COLUMN rating_avg DECIMAL(3,2) DEFAULT 0.00 NOT NULL AFTER views_count',
+      );
+    } catch (err: unknown) {
+      const mysqlErr = err as { code?: string };
+      if (mysqlErr.code !== 'ER_DUP_FIELDNAME') throw err;
+    }
+  }
+
+  // Create favorites table (Phase 10)
+  await dbPool.query(`
+    CREATE TABLE IF NOT EXISTS favorites (
+      id CHAR(36) PRIMARY KEY,
+      user_id CHAR(36) NOT NULL,
+      product_id CHAR(36) NOT NULL,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+      FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE,
+      UNIQUE KEY uk_user_product (user_id, product_id),
+      INDEX idx_favorites_user (user_id),
+      INDEX idx_favorites_product (product_id)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+  `);
+
+  // Create reviews table (Phase 10)
+  await dbPool.query(`
+    CREATE TABLE IF NOT EXISTS reviews (
+      id CHAR(36) PRIMARY KEY,
+      product_id CHAR(36) NOT NULL,
+      buyer_id CHAR(36) NOT NULL,
+      order_id CHAR(36) NOT NULL,
+      rating TINYINT NOT NULL,
+      comment TEXT NULL,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE,
+      FOREIGN KEY (buyer_id) REFERENCES users(id) ON DELETE CASCADE,
+      FOREIGN KEY (order_id) REFERENCES orders(id) ON DELETE CASCADE,
+      UNIQUE KEY uk_buyer_product (buyer_id, product_id),
+      INDEX idx_reviews_product (product_id),
+      INDEX idx_reviews_order (order_id),
+      CONSTRAINT chk_review_rating CHECK (rating >= 1 AND rating <= 5)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+  `);
+
+  // Migrate offer-linked purchase columns (accepted offer → checkout → order)
+  await addColumnIfMissing(
+    dbPool,
+    'cart_items',
+    'offer_id',
+    'ADD COLUMN offer_id CHAR(36) NULL AFTER price_snapshot',
+  );
+  await addColumnIfMissing(
+    dbPool,
+    'order_items',
+    'offer_id',
+    'ADD COLUMN offer_id CHAR(36) NULL AFTER unit_price',
+  );
+  await addColumnIfMissing(
+    dbPool,
+    'order_items',
+    'original_price',
+    'ADD COLUMN original_price INT NULL AFTER offer_id',
+  );
+  await addColumnIfMissing(
+    dbPool,
+    'offers',
+    'consumed_at',
+    'ADD COLUMN consumed_at TIMESTAMP NULL AFTER updated_at',
+  );
+
   logger.info('Database schema tables verified successfully.');
+}
+
+/**
+ * Idempotently adds a column to a table if it does not already exist.
+ * `alterClause` is the part after `ALTER TABLE <table> `, e.g. `ADD COLUMN foo INT NULL`.
+ */
+async function addColumnIfMissing(
+  dbPool: mysql.Pool,
+  table: string,
+  column: string,
+  alterClause: string,
+): Promise<void> {
+  const [cols] = await dbPool.query<mysql.RowDataPacket[]>(
+    `SELECT COUNT(*) AS cnt FROM information_schema.COLUMNS
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND COLUMN_NAME = ?`,
+    [table, column],
+  );
+  if (Number(cols[0]?.cnt) === 0) {
+    try {
+      await dbPool.query(`ALTER TABLE ${table} ${alterClause}`);
+    } catch (err: unknown) {
+      const mysqlErr = err as { code?: string };
+      if (mysqlErr.code !== 'ER_DUP_FIELDNAME') throw err;
+    }
+  }
 }
 
 /**
@@ -411,6 +513,8 @@ export async function clearDatabase(): Promise<void> {
   await dbPool.query('TRUNCATE TABLE messages;');
   await dbPool.query('TRUNCATE TABLE conversations;');
   await dbPool.query('TRUNCATE TABLE offers;');
+  await dbPool.query('TRUNCATE TABLE reviews;');
+  await dbPool.query('TRUNCATE TABLE favorites;');
   await dbPool.query('TRUNCATE TABLE vendor_follows;');
   await dbPool.query('TRUNCATE TABLE notifications;');
   await dbPool.query('TRUNCATE TABLE order_status_history;');

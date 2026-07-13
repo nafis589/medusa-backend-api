@@ -23,6 +23,8 @@ export interface ShippingAddress {
   latitude: number;
   longitude: number;
   region_id: string;
+  /** Human-readable place name resolved via reverse geocoding at checkout. */
+  address_label?: string | null;
 }
 
 /** Frozen product details stored on each order line */

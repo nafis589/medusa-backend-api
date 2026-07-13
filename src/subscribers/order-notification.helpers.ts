@@ -41,3 +41,16 @@ export async function getBuyerDisplayName(buyerId: string): Promise<string> {
   const user = results[0];
   return `${user.first_name} ${user.last_name}`.trim();
 }
+
+export async function getProductPrimaryImage(productId: string): Promise<string | null> {
+  const pool = getPool();
+  const [rows] = await pool.query(
+    `SELECT url FROM product_images
+     WHERE product_id = ?
+     ORDER BY is_primary DESC, position ASC
+     LIMIT 1`,
+    [productId],
+  );
+  const results = rows as Array<{ url: string }>;
+  return results[0]?.url ?? null;
+}

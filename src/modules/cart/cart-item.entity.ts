@@ -5,6 +5,8 @@ export interface CartItem {
   product_id: string;
   quantity: number;
   price_snapshot: number;
+  /** Set when this line comes from an accepted offer (discounted price). */
+  offer_id: string | null;
 }
 
 export interface CreateCartItemData {
@@ -12,4 +14,5 @@ export interface CreateCartItemData {
   product_id: string;
   quantity: number;
   price_snapshot: number;
+  offer_id?: string | null;
 }

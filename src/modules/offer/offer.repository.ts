@@ -15,6 +15,7 @@ function mapOffer(row: mysql.RowDataPacket): Offer {
     expires_at: row.expires_at as Date,
     created_at: row.created_at as Date,
     updated_at: row.updated_at as Date,
+    consumed_at: (row.consumed_at as Date | null) ?? null,
   };
 }
 
@@ -26,6 +27,7 @@ function mapOfferListRow(row: mysql.RowDataPacket): OfferListRow {
     product_price: Number(row.product_price),
     product_image: (row.product_image as string | null) ?? null,
     shop_name: row.shop_name as string,
+    buyer_name: (row.buyer_name as string)?.trim() || 'Client',
   };
 }
 
@@ -35,13 +37,15 @@ const LIST_SELECT = `
   p.brand AS product_brand,
   p.price AS product_price,
   pi.url AS product_image,
-  v.shop_name
+  v.shop_name,
+  TRIM(CONCAT(COALESCE(u.first_name, ''), ' ', COALESCE(u.last_name, ''))) AS buyer_name
 `;
 
 const LIST_JOINS = `
   FROM offers o
   INNER JOIN products p ON p.id = o.product_id
   INNER JOIN vendors v ON v.id = o.vendor_id
+  INNER JOIN users u ON u.id = o.buyer_id
   LEFT JOIN product_images pi ON pi.product_id = p.id AND pi.is_primary = TRUE
 `;
 
@@ -125,10 +129,54 @@ export class OfferRepository implements IOfferRepository {
     return (rows as mysql.RowDataPacket[]).map(mapOfferListRow);
   }
 
+  async listByVendorPaginated(
+    vendorId: string,
+    status: OfferStatus | undefined,
+    offset: number,
+    limit: number,
+  ): Promise<{ rows: OfferListRow[]; total: number }> {
+    const where = ['o.vendor_id = ?'];
+    const params: unknown[] = [vendorId];
+
+    if (status) {
+      where.push('o.status = ?');
+      params.push(status);
+    }
+
+    const whereClause = where.join(' AND ');
+
+    const [countRows] = await this.pool.query(
+      `SELECT COUNT(*) AS total ${LIST_JOINS} WHERE ${whereClause}`,
+      params,
+    );
+    const total = Number((countRows as mysql.RowDataPacket[])[0]?.total ?? 0);
+
+    const [rows] = await this.pool.query(
+      `SELECT ${LIST_SELECT} ${LIST_JOINS}
+       WHERE ${whereClause}
+       ORDER BY o.created_at DESC
+       LIMIT ? OFFSET ?`,
+      [...params, limit, offset],
+    );
+
+    return {
+      rows: (rows as mysql.RowDataPacket[]).map(mapOfferListRow),
+      total,
+    };
+  }
+
   async expireStale(): Promise<void> {
     await this.pool.query(
       `UPDATE offers SET status = 'EXPIRED'
        WHERE status IN ('PENDING', 'COUNTER') AND expires_at <= NOW()`,
+    );
+  }
+
+  async markConsumed(id: string, connection?: mysql.PoolConnection): Promise<void> {
+    const db = connection ?? this.pool;
+    await db.query(
+      'UPDATE offers SET consumed_at = NOW() WHERE id = ? AND consumed_at IS NULL',
+      [id],
     );
   }
 }

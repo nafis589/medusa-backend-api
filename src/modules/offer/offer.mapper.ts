@@ -18,8 +18,11 @@ export interface OfferResponse {
     image: string | null;
   };
   shop_name: string;
+  buyer_name: string;
   /** Final agreed price when ACCEPTED (counter_amount if accepted via counter). */
   final_amount: number | null;
+  /** True once an order has been placed from this accepted offer. */
+  consumed: boolean;
 }
 
 export function mapOfferResponse(row: OfferListRow): OfferResponse {
@@ -43,7 +46,9 @@ export function mapOfferResponse(row: OfferListRow): OfferResponse {
       image: row.product_image,
     },
     shop_name: row.shop_name,
+    buyer_name: row.buyer_name?.trim() || 'Client',
     final_amount: finalAmount,
+    consumed: row.consumed_at != null,
   };
 }
 

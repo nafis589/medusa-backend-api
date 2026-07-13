@@ -1,8 +1,14 @@
 import { ProductRepository } from '@modules/product/product.repository';
+import { OfferRepository } from '@modules/offer/offer.repository';
 import { CartRepository } from './cart.repository';
 import { CartItemRepository } from './cart-item.repository';
 import { CartService } from './cart.service';
 
 export function createCartService(): CartService {
-  return new CartService(new CartRepository(), new CartItemRepository(), new ProductRepository());
+  return new CartService(
+    new CartRepository(),
+    new CartItemRepository(),
+    new ProductRepository(),
+    new OfferRepository(),
+  );
 }

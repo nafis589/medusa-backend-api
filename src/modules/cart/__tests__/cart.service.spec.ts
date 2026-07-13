@@ -48,6 +48,7 @@ function makeCartItem(overrides: Partial<CartItem> = {}): CartItem {
     product_id: 'prod-1',
     quantity: 1,
     price_snapshot: 15000,
+    offer_id: null,
     ...overrides,
   };
 }
@@ -97,6 +98,9 @@ function buildCartItemRepo(overrides: Partial<ICartItemRepository> = {}): ICartI
     findByCartId: jest.fn().mockResolvedValue([]),
     findByCartAndProduct: jest.fn().mockResolvedValue(null),
     create: jest.fn().mockImplementation((data: CartItem) => Promise.resolve(makeCartItem(data))),
+    upsertOfferItem: jest.fn().mockImplementation((data: Partial<CartItem>) =>
+      Promise.resolve(makeCartItem(data)),
+    ),
     updateQuantity: jest.fn().mockImplementation((id: string, quantity: number) =>
       Promise.resolve(makeCartItem({ id, quantity })),
     ),

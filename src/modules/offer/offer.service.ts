@@ -1,10 +1,11 @@
 import { randomUUID } from 'crypto';
 import { AppError } from '@shared/errors/app-error';
 import { eventBus } from '@shared/utils/event-bus';
+import { getPagination, getPaginationMeta } from '@shared/utils/pagination';
 import type { IProductRepository } from '@modules/product/product.repository.interface';
 import { findVendorIdByUserId } from '@modules/vendor/vendor.util';
 import type { IOfferRepository } from './offer.repository.interface';
-import type { Offer, OfferListRow } from './offer.entity';
+import type { Offer, OfferListRow, OfferStatus } from './offer.entity';
 import { mapOfferResponse, mapOffersResponse, type OfferResponse } from './offer.mapper';
 
 const OFFER_TTL_MS = 48 * 60 * 60 * 1000;
@@ -105,7 +106,33 @@ export class OfferService {
     return mapOffersResponse(rows);
   }
 
-  async listForVendor(vendorId: string): Promise<OfferResponse[]> {
+  async listForVendor(
+    vendorId: string,
+    status?: OfferStatus,
+    page = 1,
+    limit = 20,
+  ): Promise<{ offers: OfferResponse[]; total: number; page: number; limit: number }> {
+    await this.offerRepo.expireStale();
+    const { offset, limit: safeLimit } = getPagination(page, limit);
+    const { rows, total } = await this.offerRepo.listByVendorPaginated(
+      vendorId,
+      status,
+      offset,
+      safeLimit,
+    );
+    return {
+      offers: mapOffersResponse(rows),
+      total,
+      page,
+      limit: safeLimit,
+    };
+  }
+
+  getListMeta(total: number, page: number, limit: number) {
+    return getPaginationMeta(total, page, limit);
+  }
+
+  async listForVendorAll(vendorId: string): Promise<OfferResponse[]> {
     await this.offerRepo.expireStale();
     const rows = await this.offerRepo.listByVendor(vendorId);
     return mapOffersResponse(rows);

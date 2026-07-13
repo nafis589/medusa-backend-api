@@ -5,6 +5,10 @@ export const AddCartItemSchema = z.object({
   quantity: z.coerce.number().int().min(1).default(1),
 });
 
+export const AddOfferCartItemSchema = z.object({
+  offer_id: z.string().uuid('offer_id must be a valid UUID'),
+});
+
 export const UpdateCartItemSchema = z.object({
   quantity: z.coerce.number().int().min(0),
 });

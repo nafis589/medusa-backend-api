@@ -44,6 +44,14 @@ router.use('/conversations', conversationRoutes);
 import offerRoutes from './offers';
 router.use('/offers', offerRoutes);
 
+// ── Favorite routes (Phase 10) ────────────────────────────────────────────
+import favoriteRoutes from './favorites';
+router.use('/favorites', favoriteRoutes);
+
+// ── Review routes (Phase 10) ──────────────────────────────────────────────
+import reviewRoutes from './reviews';
+router.use('/reviews', reviewRoutes);
+
 // ── Shipping routes (Phase 3) ─────────────────────────────────────────────
 import shippingRoutes from '@modules/shipping/shipping.routes';
 router.use('/shipping', shippingRoutes);

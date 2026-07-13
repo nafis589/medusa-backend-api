@@ -7,6 +7,13 @@ export interface ICartItemRepository {
   findByCartId(cartId: string): Promise<CartItemWithProduct[]>;
   findByCartAndProduct(cartId: string, productId: string): Promise<CartItem | null>;
   create(data: CreateCartItemData & { id: string }): Promise<CartItem>;
+  upsertOfferItem(data: {
+    id: string;
+    cart_id: string;
+    product_id: string;
+    price_snapshot: number;
+    offer_id: string;
+  }): Promise<CartItem>;
   updateQuantity(id: string, quantity: number): Promise<CartItem>;
   delete(id: string): Promise<void>;
   deleteByCartId(cartId: string, connection?: PoolConnection): Promise<void>;

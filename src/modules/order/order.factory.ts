@@ -2,6 +2,7 @@ import { CartService } from '@modules/cart/cart.service';
 import { CartRepository } from '@modules/cart/cart.repository';
 import { CartItemRepository } from '@modules/cart/cart-item.repository';
 import { ProductRepository } from '@modules/product/product.repository';
+import { OfferRepository } from '@modules/offer/offer.repository';
 import { OrderRepository } from './order.repository';
 import { OrderItemRepository } from './order-item.repository';
 import { OrderStatusHistoryRepository } from './order-status-history.repository';
@@ -10,10 +11,12 @@ import { OrderService } from './order.service';
 
 export function createPlaceOrderWorkflow(): PlaceOrderWorkflow {
   const productRepo = new ProductRepository();
+  const offerRepo = new OfferRepository();
   const cartService = new CartService(
     new CartRepository(),
     new CartItemRepository(),
     productRepo,
+    offerRepo,
   );
 
   return new PlaceOrderWorkflow(
@@ -23,6 +26,7 @@ export function createPlaceOrderWorkflow(): PlaceOrderWorkflow {
     new OrderItemRepository(),
     new OrderStatusHistoryRepository(),
     new CartItemRepository(),
+    offerRepo,
   );
 }
 

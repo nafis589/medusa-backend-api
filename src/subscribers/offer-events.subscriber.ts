@@ -5,6 +5,7 @@ import { emitToUser } from '@modules/notification/socket.gateway';
 import {
   formatFcfa,
   getBuyerDisplayName,
+  getProductPrimaryImage,
   getVendorUserId,
 } from './order-notification.helpers';
 
@@ -18,6 +19,7 @@ async function notifyUser(
   socketEvent: string,
   payload: OfferEventPayload,
 ): Promise<void> {
+  const productImage = await getProductPrimaryImage(payload.productId);
   const notification = await notificationService.create(userId, {
     type,
     title,
@@ -25,6 +27,7 @@ async function notifyUser(
     metadata: {
       offerId: payload.offerId,
       productId: payload.productId,
+      product_image: productImage,
       amount: payload.amount,
       counterAmount: payload.counterAmount ?? null,
     },

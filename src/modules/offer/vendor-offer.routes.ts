@@ -1,13 +1,16 @@
 import { Router } from 'express';
 import { AppError } from '@shared/errors/app-error';
-import { validate, validateParams } from '@shared/middlewares/validate';
+import { validate, validateParams, validateQuery } from '@shared/middlewares/validate';
 import { createOfferService } from '@modules/offer/offer.factory';
 import { getActiveVendorIdByUserId } from '@modules/vendor/vendor.util';
 import {
   CounterOfferSchema,
   OfferIdSchema,
+  OfferListQuerySchema,
   type CounterOfferInput,
+  type OfferListQueryInput,
 } from '@modules/offer/offer.schema';
+import type { OfferStatus } from '@modules/offer/offer.entity';
 
 const router = Router();
 const service = createOfferService();
@@ -23,11 +26,20 @@ async function resolveVendorId(req: import('express').Request): Promise<string> 
 /**
  * GET /api/vendor/offers
  */
-router.get('/', async (req, res, next) => {
+router.get('/', validateQuery(OfferListQuerySchema), async (req, res, next) => {
   try {
     const vendorId = await resolveVendorId(req);
-    const offers = await service.listForVendor(vendorId);
-    res.json({ data: offers });
+    const query = req.query as unknown as OfferListQueryInput;
+    const { offers, total, page, limit } = await service.listForVendor(
+      vendorId,
+      query.status as OfferStatus | undefined,
+      query.page,
+      query.limit,
+    );
+    res.json({
+      data: offers,
+      meta: service.getListMeta(total, page, limit),
+    });
   } catch (err) {
     next(err);
   }

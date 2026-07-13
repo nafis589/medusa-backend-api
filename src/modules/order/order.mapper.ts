@@ -35,6 +35,8 @@ export function mapOrderDetailResponse(detail: OrderDetail) {
       product_id: item.product_id,
       quantity: item.quantity,
       unit_price: item.unit_price,
+      offer_id: item.offer_id,
+      original_price: item.original_price,
       product_snapshot: item.product_snapshot,
     })),
     status_history: detail.status_history.map((entry) => ({

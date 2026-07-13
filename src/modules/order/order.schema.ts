@@ -20,6 +20,7 @@ export const PlaceOrderSchema = z.object({
     latitude: z.coerce.number(),
     longitude: z.coerce.number(),
     region_id: z.string().min(1),
+    address_label: z.string().optional().nullable(),
   }),
   shipping_fee: z.coerce.number().int().positive(),
   shipping_method: z.enum(['PER_KM', 'FIXED']),
