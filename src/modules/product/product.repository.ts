@@ -9,7 +9,7 @@ import type {
   ProductDetailRow,
   ProductListQuery,
 } from './product.repository.interface';
-import type { ProductListItem, ProductReview, ProductVendorSummary, ProductCategoryPath, ProductFilterFacets, FilterFacetOption, SearchSuggestion } from './product.types';
+import type { ProductListItem, ProductReview, ProductVendorSummary, ProductCategoryPath, ProductFilterFacets, FilterFacetOption, SearchSuggestion, AdminProductVendorInfo } from './product.types';
 import type { VendorContact } from './product.repository.interface';
 import { ProductImageRepository } from './product-image.repository';
 
@@ -239,6 +239,31 @@ export class ProductRepository implements IProductRepository {
     return results.length > 0 ? mapProduct(results[0]) : null;
   }
 
+  async findAdminDetailById(
+    id: string,
+  ): Promise<{ product: Product; vendor: AdminProductVendorInfo } | null> {
+    const [rows] = await this.pool.query(
+      `SELECT p.*, v.shop_name, v.status AS vendor_status, u.email AS vendor_email
+       FROM products p
+       INNER JOIN vendors v ON v.id = p.vendor_id
+       INNER JOIN users u ON u.id = v.user_id
+       WHERE p.id = ?`,
+      [id],
+    );
+    const results = rows as mysql.RowDataPacket[];
+    if (results.length === 0) return null;
+
+    const row = results[0];
+    return {
+      product: mapProduct(row),
+      vendor: {
+        shop_name: row.shop_name as string,
+        email: row.vendor_email as string,
+        status: row.vendor_status as string,
+      },
+    };
+  }
+
   async findActiveById(id: string): Promise<Product | null> {
     const [rows] = await this.pool.query(
       "SELECT * FROM products WHERE id = ? AND status = 'ACTIVE'",
@@ -250,7 +275,7 @@ export class ProductRepository implements IProductRepository {
 
   async findDetailById(id: string): Promise<ProductDetailRow | null> {
     const [rows] = await this.pool.query(
-      `SELECT p.*, v.shop_name, v.rating AS vendor_rating, v.total_sales AS vendor_total_sales,
+      `SELECT p.*, v.shop_name, v.shop_logo, v.rating AS vendor_rating, v.total_sales AS vendor_total_sales,
               vl.region_id AS vendor_region_id,
               cat.name AS category_name,
               cat_parent.name AS parent_category_name,
@@ -271,6 +296,7 @@ export class ProductRepository implements IProductRepository {
     const product = mapProduct(row);
     const vendor: ProductVendorSummary = {
       shop_name: row.shop_name as string,
+      shop_logo: (row.shop_logo as string | null) ?? null,
       rating: Number(row.vendor_rating),
       total_sales: Number(row.vendor_total_sales),
     };
@@ -715,6 +741,31 @@ export class ProductRepository implements IProductRepository {
     };
   }
 
+  async findCategoryNameById(categoryId: string): Promise<string | null> {
+    const [rows] = await this.pool.query(
+      `SELECT c.name AS name, p.name AS parent_name
+       FROM categories c
+       LEFT JOIN categories p ON p.id = c.parent_id
+       WHERE c.id = ?`,
+      [categoryId],
+    );
+    const results = rows as mysql.RowDataPacket[];
+    if (results.length === 0) return null;
+
+    const name = results[0].name as string;
+    const parentName = results[0].parent_name as string | null;
+    return parentName ? `${parentName} › ${name}` : name;
+  }
+
+  async countOrdersByProductId(productId: string): Promise<number> {
+    const [rows] = await this.pool.query(
+      'SELECT COUNT(DISTINCT order_id) AS cnt FROM order_items WHERE product_id = ?',
+      [productId],
+    );
+    const results = rows as mysql.RowDataPacket[];
+    return Number(results[0]?.cnt ?? 0);
+  }
+
   async findByIdForUpdate(id: string, connection: PoolConnection): Promise<Product | null> {
     const [rows] = await connection.query('SELECT * FROM products WHERE id = ? FOR UPDATE', [id]);
     const results = rows as mysql.RowDataPacket[];
@@ -743,5 +794,9 @@ export class ProductRepository implements IProductRepository {
   ): Promise<void> {
     const db = connection ?? this.pool;
     await db.query('UPDATE products SET stock = stock + ? WHERE id = ?', [quantity, id]);
+  }
+
+  async deletePermanent(id: string): Promise<void> {
+    await this.pool.query('DELETE FROM products WHERE id = ?', [id]);
   }
 }

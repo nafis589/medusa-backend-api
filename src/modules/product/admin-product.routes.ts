@@ -3,9 +3,11 @@ import { validate, validateParams, validateQuery } from '@shared/middlewares/val
 import { createProductService } from './product.factory';
 import {
   AdminProductListQuerySchema,
+  ArchiveProductSchema,
   ProductIdSchema,
   RejectProductSchema,
   type AdminProductListQueryInput,
+  type ArchiveProductBody,
   type RejectProductBody,
 } from './product.schema';
 import type { AdminProductListFilters } from './product.types';
@@ -49,6 +51,19 @@ router.get('/', validateQuery(AdminProductListQuerySchema), async (req, res, nex
 });
 
 /**
+ * GET /api/admin/products/:id
+ */
+router.get('/:id', validateParams(ProductIdSchema), async (req, res, next) => {
+  try {
+    const { id } = req.params as { id: string };
+    const product = await service.findAdminProduct(id);
+    res.json({ data: product });
+  } catch (err) {
+    next(err);
+  }
+});
+
+/**
  * PATCH /api/admin/products/:id/approve
  */
 router.patch('/:id/approve', validateParams(ProductIdSchema), async (req, res, next) => {
@@ -79,5 +94,37 @@ router.patch(
     }
   },
 );
+
+/**
+ * PATCH /api/admin/products/:id/archive
+ */
+router.patch(
+  '/:id/archive',
+  validateParams(ProductIdSchema),
+  validate(ArchiveProductSchema),
+  async (req, res, next) => {
+    try {
+      const { id } = req.params as { id: string };
+      const { reason } = req.body as ArchiveProductBody;
+      const product = await service.archive(id, reason);
+      res.json({ data: product });
+    } catch (err) {
+      next(err);
+    }
+  },
+);
+
+/**
+ * DELETE /api/admin/products/:id
+ */
+router.delete('/:id', validateParams(ProductIdSchema), async (req, res, next) => {
+  try {
+    const { id } = req.params as { id: string };
+    await service.deletePermanent(id);
+    res.json({ data: { message: 'Product deleted permanently' } });
+  } catch (err) {
+    next(err);
+  }
+});
 
 export default router;

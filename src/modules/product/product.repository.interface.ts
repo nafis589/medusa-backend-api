@@ -5,6 +5,7 @@ import type {
   ProductVendorSummary,
   ProductFilterFacets,
   SearchSuggestion,
+  AdminProductVendorInfo,
 } from './product.types';
 import type { PoolConnection } from 'mysql2/promise';
 
@@ -48,6 +49,7 @@ export interface ProductDetailRow {
 
 export interface IProductRepository {
   findById(id: string): Promise<Product | null>;
+  findAdminDetailById(id: string): Promise<{ product: Product; vendor: AdminProductVendorInfo } | null>;
   findActiveById(id: string): Promise<Product | null>;
   findDetailById(id: string): Promise<ProductDetailRow | null>;
   list(query: ProductListQuery): Promise<{ products: ProductListItem[]; total: number }>;
@@ -67,7 +69,10 @@ export interface IProductRepository {
   findTrending(limit: number): Promise<ProductListItem[]>;
   getFilterFacets(scope: ProductListQuery): Promise<ProductFilterFacets>;
   findVendorContactByProductId(productId: string): Promise<VendorContact | null>;
+  findCategoryNameById(categoryId: string): Promise<string | null>;
+  countOrdersByProductId(productId: string): Promise<number>;
   findByIdForUpdate(id: string, connection: PoolConnection): Promise<Product | null>;
   decrementStock(id: string, quantity: number, connection: PoolConnection): Promise<void>;
   incrementStock(id: string, quantity: number, connection?: PoolConnection): Promise<void>;
+  deletePermanent(id: string): Promise<void>;
 }

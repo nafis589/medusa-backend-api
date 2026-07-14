@@ -59,6 +59,7 @@ export interface SearchSuggestion {
 
 export interface ProductVendorSummary {
   shop_name: string;
+  shop_logo: string | null;
   rating: number;
   total_sales: number;
 }
@@ -109,8 +110,23 @@ export type UpdateProductInput = Partial<Omit<CreateProductInput, 'images' | 'st
 
 export interface VendorProductDetail extends Product {
   images: ProductImage[];
+  category_name: string | null;
+  orders_count: number;
 }
 
 export interface AdminProductListFilters extends ProductListFilters {
   status?: import('./product.entity').ProductStatus;
+}
+
+export interface AdminProductVendorInfo {
+  shop_name: string;
+  email: string;
+  status: string;
+}
+
+export interface AdminProductDetail extends Product {
+  images: ProductImage[];
+  category_name: string | null;
+  orders_count: number;
+  vendor: AdminProductVendorInfo;
 }

@@ -47,6 +47,10 @@ function buildProductRepo(overrides: Partial<IProductRepository> = {}): IProduct
     search: jest.fn().mockResolvedValue({ products: [], total: 0 }),
     findTrending: jest.fn().mockResolvedValue([]),
     findVendorContactByProductId: jest.fn().mockResolvedValue(null),
+    findCategoryNameById: jest.fn().mockResolvedValue(null),
+    countOrdersByProductId: jest.fn().mockResolvedValue(0),
+    findAdminDetailById: jest.fn().mockResolvedValue(null),
+    deletePermanent: jest.fn().mockResolvedValue(undefined),
     create: jest.fn().mockImplementation((data) =>
       Promise.resolve(makeProduct({ id: data.id, vendor_id: data.vendor_id, ...data })),
     ),
@@ -144,7 +148,7 @@ describe('ProductService', () => {
       const detail: ProductDetailRow = {
         product: makeProduct({ status: 'DRAFT' }),
         images: [],
-        vendor: { shop_name: 'Shop', rating: 4.5, total_sales: 12 },
+        vendor: { shop_name: 'Shop', shop_logo: null, rating: 4.5, total_sales: 12 },
         reviews: [],
         vendor_region: 'Maritime',
         category_path: { universe: 'Femme', category: 'Robes', subcategory: null },
@@ -157,11 +161,11 @@ describe('ProductService', () => {
       });
     });
 
-    it('returns product detail and increments views asynchronously', async () => {
+    it('returns product detail without incrementing views', async () => {
       const detail: ProductDetailRow = {
         product: makeProduct(),
         images: [makeImage()],
-        vendor: { shop_name: 'Shop Test', rating: 4.8, total_sales: 5 },
+        vendor: { shop_name: 'Shop Test', shop_logo: null, rating: 4.8, total_sales: 5 },
         reviews: [],
         vendor_region: 'Maritime',
         category_path: { universe: 'Femme', category: 'Robes', subcategory: null },
@@ -177,7 +181,7 @@ describe('ProductService', () => {
       expect(result.title).toBe('Robe wax');
       expect(result.images).toHaveLength(1);
       expect(result.vendor.shop_name).toBe('Shop Test');
-      expect(incrementViews).toHaveBeenCalledWith('prod-1');
+      expect(incrementViews).not.toHaveBeenCalled();
     });
   });
 

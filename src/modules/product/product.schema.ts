@@ -122,6 +122,10 @@ export const RejectProductSchema = z.object({
   reason: z.string().min(1, 'Reason is required').max(1000),
 });
 
+export const ArchiveProductSchema = z.object({
+  reason: z.string().max(1000).optional(),
+});
+
 export type ProductListQueryInput = z.infer<typeof ProductListQuerySchema>;
 export type ProductFilterScopeQueryInput = z.infer<typeof ProductFilterScopeQuerySchema>;
 export type ProductSearchQueryInput = z.infer<typeof ProductSearchQuerySchema>;
@@ -133,3 +137,4 @@ export type VendorProductListQueryInput = z.infer<typeof VendorProductListQueryS
 export type VendorCreateProductBody = z.infer<typeof VendorCreateProductSchema>;
 export type VendorUpdateProductBody = z.infer<typeof VendorUpdateProductSchema>;
 export type RejectProductBody = z.infer<typeof RejectProductSchema>;
+export type ArchiveProductBody = z.infer<typeof ArchiveProductSchema>;

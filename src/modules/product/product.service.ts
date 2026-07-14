@@ -4,11 +4,14 @@ import { uploadImage } from '@shared/utils/cloudinary.util';
 import { sendMail } from '@shared/utils/mail';
 import { getPagination, getPaginationMeta } from '@shared/utils/pagination';
 import type { ICategoryRepository } from '@modules/category/category.repository.interface';
+import type { NotificationService } from '@modules/notification/notification.service';
+import { getUserIdByVendorId } from '@modules/vendor/vendor.util';
 import type { Product, ProductStatus, UpdateProductData } from './product.entity';
 import type { IProductImageRepository } from './product-image.repository.interface';
 import type { IProductRepository } from './product.repository.interface';
 import type {
   AdminProductListFilters,
+  AdminProductDetail,
   CreateProductInput,
   ProductDetail,
   ProductListFilters,
@@ -33,6 +36,7 @@ export class ProductService {
     private readonly productRepo: IProductRepository,
     private readonly productImageRepo: IProductImageRepository,
     private readonly categoryRepo: ICategoryRepository,
+    private readonly notificationService?: NotificationService,
   ) {}
 
   // ── Private helpers ────────────────────────────────────────────────────────
@@ -248,8 +252,6 @@ export class ProductService {
       throw new AppError(404, 'PRODUCT_NOT_FOUND', 'Product not found');
     }
 
-    void this.incrementViews(id);
-
     return {
       ...detail.product,
       images: detail.images,
@@ -358,8 +360,68 @@ export class ProductService {
 
   async findVendorProduct(id: string, vendorId: string): Promise<VendorProductDetail> {
     const product = await this.assertOwnership(id, vendorId);
-    const images = await this.productImageRepo.findByProductId(id);
-    return { ...product, images };
+    const [images, category_name, orders_count] = await Promise.all([
+      this.productImageRepo.findByProductId(id),
+      product.category_id
+        ? this.productRepo.findCategoryNameById(product.category_id)
+        : Promise.resolve(null),
+      this.productRepo.countOrdersByProductId(id),
+    ]);
+    return { ...product, images, category_name, orders_count };
+  }
+
+  private async notifyVendorProductStatus(
+    product: Product,
+    newStatus: ProductStatus | 'DELETED',
+    reason?: string | null,
+  ): Promise<void> {
+    if (!this.notificationService) return;
+
+    const userId = await getUserIdByVendorId(product.vendor_id);
+    if (!userId) return;
+
+    const statusLabel: Record<string, string> = {
+      ACTIVE: 'validé',
+      REJECTED: 'rejeté',
+      ARCHIVED: 'désactivé',
+      DELETED: 'supprimé définitivement',
+    };
+    const verb = statusLabel[newStatus] ?? 'mis à jour';
+    const suffix = reason?.trim() ? ` : ${reason.trim()}` : '';
+
+    await this.notificationService.create(userId, {
+      type: 'PRODUCT_STATUS',
+      title: 'Statut de votre produit mis à jour',
+      body: `Votre produit "${product.title}" a été ${verb}${suffix}`,
+      metadata: {
+        productId: product.id,
+        newStatus,
+        reason: reason?.trim() ?? null,
+      },
+    });
+  }
+
+  async findAdminProduct(id: string): Promise<AdminProductDetail> {
+    const detail = await this.productRepo.findAdminDetailById(id);
+    if (!detail) {
+      throw new AppError(404, 'PRODUCT_NOT_FOUND', 'Product not found');
+    }
+
+    const [images, category_name, orders_count] = await Promise.all([
+      this.productImageRepo.findByProductId(id),
+      detail.product.category_id
+        ? this.productRepo.findCategoryNameById(detail.product.category_id)
+        : Promise.resolve(null),
+      this.productRepo.countOrdersByProductId(id),
+    ]);
+
+    return {
+      ...detail.product,
+      images,
+      category_name,
+      orders_count,
+      vendor: detail.vendor,
+    };
   }
 
   async approve(id: string): Promise<Product> {
@@ -367,10 +429,16 @@ export class ProductService {
     if (!product) {
       throw new AppError(404, 'PRODUCT_NOT_FOUND', 'Product not found');
     }
-    if (product.status !== 'PENDING_REVIEW') {
-      throw new AppError(400, 'INVALID_STATUS', 'Only PENDING_REVIEW products can be approved');
+    if (product.status !== 'PENDING_REVIEW' && product.status !== 'ARCHIVED') {
+      throw new AppError(
+        400,
+        'INVALID_STATUS',
+        'Only PENDING_REVIEW or ARCHIVED products can be approved',
+      );
     }
-    return this.productRepo.updateStatus(id, 'ACTIVE');
+    const updated = await this.productRepo.updateStatus(id, 'ACTIVE');
+    await this.notifyVendorProductStatus(updated, 'ACTIVE');
+    return updated;
   }
 
   async reject(id: string, reason: string): Promise<Product> {
@@ -397,7 +465,32 @@ export class ProductService {
       });
     }
 
+    await this.notifyVendorProductStatus(updated, 'REJECTED', reason);
     return updated;
+  }
+
+  async archive(id: string, reason?: string): Promise<Product> {
+    const product = await this.productRepo.findById(id);
+    if (!product) {
+      throw new AppError(404, 'PRODUCT_NOT_FOUND', 'Product not found');
+    }
+    if (product.status !== 'ACTIVE') {
+      throw new AppError(400, 'INVALID_STATUS', 'Only ACTIVE products can be archived');
+    }
+
+    const updated = await this.productRepo.updateStatus(id, 'ARCHIVED');
+    await this.notifyVendorProductStatus(updated, 'ARCHIVED', reason);
+    return updated;
+  }
+
+  async deletePermanent(id: string): Promise<void> {
+    const product = await this.productRepo.findById(id);
+    if (!product) {
+      throw new AppError(404, 'PRODUCT_NOT_FOUND', 'Product not found');
+    }
+
+    await this.notifyVendorProductStatus(product, 'DELETED');
+    await this.productRepo.deletePermanent(id);
   }
 
   async incrementViews(id: string): Promise<void> {

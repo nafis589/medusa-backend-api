@@ -1,6 +1,8 @@
 import { Router } from 'express';
 import { validateParams, validateQuery } from '@shared/middlewares/validate';
+import { optionalAuthenticate } from '@shared/middlewares/optional-authenticate';
 import { createProductService } from './product.factory';
+import { trackProductViewIfEligible } from './product-view-tracker';
 import {
   ProductIdSchema,
   ProductListQuerySchema,
@@ -66,10 +68,15 @@ router.get('/', validateQuery(ProductListQuerySchema), async (req, res, next) =>
 /**
  * GET /api/store/products/:id
  */
-router.get('/:id', validateParams(ProductIdSchema), async (req, res, next) => {
+router.get('/:id', validateParams(ProductIdSchema), optionalAuthenticate, async (req, res, next) => {
   try {
     const { id } = req.params as { id: string };
     const product = await service.findById(id);
+
+    void trackProductViewIfEligible(req, id, product.vendor_id, (productId) =>
+      service.incrementViews(productId),
+    );
+
     res.json({ data: product });
   } catch (err) {
     next(err);
