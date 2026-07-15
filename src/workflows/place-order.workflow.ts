@@ -18,14 +18,20 @@ import type {
   ShippingMethod,
 } from '@modules/order/order.types';
 
+export interface VendorShippingInput {
+  vendorId: string;
+  shippingFee: number;
+  shippingMethod: ShippingMethod;
+  shippingDistanceKm?: number | null;
+  shippingDetail: string;
+}
+
 export interface PlaceOrderInput {
   buyerId: string;
   buyerVendorId?: string;
   shippingAddress: ShippingAddress;
-  shippingFee: number;
-  shippingMethod: ShippingMethod;
-  shippingDistanceKm?: number | null;
   paymentMethod: PaymentMethod;
+  vendorShippings: VendorShippingInput[];
 }
 
 export interface PlaceOrderResult {
@@ -36,13 +42,6 @@ interface VendorCartGroup {
   vendorId: string;
   items: CartItemWithProduct[];
   products: Map<string, Product>;
-}
-
-function allocateShippingFee(vendorIndex: number, vendorCount: number, totalFee: number): number {
-  if (vendorCount <= 1) return totalFee;
-  const base = Math.floor(totalFee / vendorCount);
-  const remainder = totalFee % vendorCount;
-  return base + (vendorIndex === 0 ? remainder : 0);
 }
 
 export class PlaceOrderWorkflow {
@@ -63,9 +62,33 @@ export class PlaceOrderWorkflow {
       throw new AppError(400, 'CART_EMPTY', 'Cart is empty');
     }
 
+    if (input.vendorShippings.length === 0) {
+      throw new AppError(400, 'SHIPPING_REQUIRED', 'At least one vendor shipping is required');
+    }
+
+    const orderedVendorIds = new Set(input.vendorShippings.map((e) => e.vendorId));
+    const orderedItems = cart.items.filter((item) =>
+      orderedVendorIds.has(item.product.vendor.id),
+    );
+
+    if (orderedItems.length === 0) {
+      throw new AppError(400, 'CART_EMPTY', 'No items to order for selected vendors');
+    }
+
+    for (const entry of input.vendorShippings) {
+      const hasVendor = orderedItems.some((item) => item.product.vendor.id === entry.vendorId);
+      if (!hasVendor) {
+        throw new AppError(
+          400,
+          'VENDOR_NOT_IN_CART',
+          `Vendor ${entry.vendorId} is not in the cart`,
+        );
+      }
+    }
+
     const productById = new Map<string, Product>();
 
-    for (const item of cart.items) {
+    for (const item of orderedItems) {
       const product = await this.productRepo.findById(item.product_id);
       if (!product || product.status !== 'ACTIVE') {
         throw new AppError(400, 'PRODUCT_NOT_AVAILABLE', 'Product is not available');
@@ -102,16 +125,8 @@ export class PlaceOrderWorkflow {
       productById.set(item.product_id, product);
     }
 
-    if (
-      input.shippingFee === undefined ||
-      input.shippingFee === null ||
-      !Number.isFinite(input.shippingFee) ||
-      input.shippingFee <= 0
-    ) {
-      throw new AppError(400, 'SHIPPING_NOT_CALCULATED', 'Shipping fee must be calculated');
-    }
+    const vendorGroups = this.groupItemsByVendor(orderedItems, productById);
 
-    const vendorGroups = this.groupItemsByVendor(cart.items, productById);
     const pool = getPool();
     const connection = await pool.getConnection();
     const createdOrders: Order[] = [];
@@ -119,7 +134,7 @@ export class PlaceOrderWorkflow {
     try {
       await connection.beginTransaction();
 
-      for (const item of cart.items) {
+      for (const item of orderedItems) {
         const locked = await this.productRepo.findByIdForUpdate(item.product_id, connection);
         if (!locked || locked.status !== 'ACTIVE') {
           throw new AppError(400, 'PRODUCT_NOT_AVAILABLE', 'Product is not available');
@@ -130,16 +145,13 @@ export class PlaceOrderWorkflow {
         await this.productRepo.decrementStock(item.product_id, item.quantity, connection);
       }
 
-      const vendorIds = Array.from(vendorGroups.keys());
-
-      for (let index = 0; index < vendorIds.length; index++) {
-        const vendorId = vendorIds[index]!;
+      for (const entry of input.vendorShippings) {
+        const vendorId = entry.vendorId;
         const group = vendorGroups.get(vendorId)!;
         const itemsSubtotal = group.items.reduce(
           (sum, item) => sum + item.price_snapshot * item.quantity,
           0,
         );
-        const shippingFee = allocateShippingFee(index, vendorIds.length, input.shippingFee);
         const orderId = randomUUID();
 
         const order = await this.orderRepo.create(
@@ -148,13 +160,14 @@ export class PlaceOrderWorkflow {
             buyer_id: input.buyerId,
             vendor_id: vendorId,
             status: 'PENDING',
-            total_amount: itemsSubtotal + shippingFee,
-            shipping_fee: shippingFee,
+            total_amount: itemsSubtotal + entry.shippingFee,
+            shipping_fee: entry.shippingFee,
             payment_method: input.paymentMethod,
             shipping_address: input.shippingAddress,
             shipping_region_id: input.shippingAddress.region_id,
-            shipping_method: input.shippingMethod,
-            shipping_distance_km: input.shippingDistanceKm ?? null,
+            shipping_method: entry.shippingMethod,
+            shipping_distance_km: entry.shippingDistanceKm ?? null,
+            shipping_detail: entry.shippingDetail,
           },
           connection,
         );
@@ -198,7 +211,10 @@ export class PlaceOrderWorkflow {
         createdOrders.push(order);
       }
 
-      await this.cartItemRepo.deleteByCartId(cart.cart.id, connection);
+      await this.cartItemRepo.deleteByIds(
+        orderedItems.map((item) => item.id),
+        connection,
+      );
 
       await connection.commit();
     } catch (err) {

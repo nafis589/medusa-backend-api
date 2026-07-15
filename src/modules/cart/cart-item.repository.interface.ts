@@ -16,5 +16,6 @@ export interface ICartItemRepository {
   }): Promise<CartItem>;
   updateQuantity(id: string, quantity: number): Promise<CartItem>;
   delete(id: string): Promise<void>;
+  deleteByIds(ids: string[], connection?: PoolConnection): Promise<void>;
   deleteByCartId(cartId: string, connection?: PoolConnection): Promise<void>;
 }

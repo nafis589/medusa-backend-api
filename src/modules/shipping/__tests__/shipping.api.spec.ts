@@ -11,6 +11,8 @@ import { closePool, clearDatabase, getPool, initializeDatabase } from '@shared/u
 import { hashPassword } from '@shared/utils/hash';
 import { signToken } from '@shared/utils/jwt.util';
 
+const PRODUCT_ID = 'c0000000-0000-4000-8000-000000000001';
+
 describe('Shipping API Integration Tests', () => {
   let vendorId: string;
   let vendorToken: string;
@@ -21,9 +23,13 @@ describe('Shipping API Integration Tests', () => {
 
   beforeEach(async () => {
     await clearDatabase();
-    const redis = getRedis();
-    const keys = await redis.keys('blacklist:*');
-    if (keys.length > 0) await redis.del(...keys);
+    try {
+      const redis = getRedis();
+      const keys = await redis.keys('blacklist:*');
+      if (keys.length > 0) await redis.del(...keys);
+    } catch {
+      // Redis may be unavailable in some test runs
+    }
 
     const db = getPool();
     const userId = randomUUID();
@@ -40,6 +46,13 @@ describe('Shipping API Integration Tests', () => {
       [vendorId, userId, 'Shop Test', 'Description', 'ACTIVE'],
     );
 
+    await db.query(
+      `INSERT INTO products (
+        id, vendor_id, title, description, price, status, stock, views_count
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      [PRODUCT_ID, vendorId, 'Test Product', 'Description', 15000, 'ACTIVE', 5, 0],
+    );
+
     vendorToken = signToken({ id: userId, email: 'vendor@shipping.test', role: 'VENDOR' });
   });
 
@@ -49,6 +62,12 @@ describe('Shipping API Integration Tests', () => {
     await redis.quit();
     await closePool();
   });
+
+  async function createCartWithProduct() {
+    const agent = request.agent(app);
+    await agent.post('/api/store/cart/items').send({ product_id: PRODUCT_ID, quantity: 1 });
+    return agent;
+  }
 
   describe('POST /api/store/shipping/validate-location', () => {
     it('returns isInTogo true for Lomé', async () => {
@@ -74,18 +93,23 @@ describe('Shipping API Integration Tests', () => {
   });
 
   describe('POST /api/store/shipping/calculate', () => {
-    it('returns 200 with VENDOR_SHIPPING_NOT_SET when vendor has no config', async () => {
-      const res = await request(app).post('/api/store/shipping/calculate').send({
-        vendor_id: vendorId,
+    it('returns vendor error when vendor has no shipping config', async () => {
+      const agent = await createCartWithProduct();
+      const res = await agent.post('/api/store/shipping/calculate').send({
         client_lat: 6.14,
         client_lng: 1.21,
       });
 
       expect(res.status).toBe(200);
-      expect(res.body.data.error.code).toBe('VENDOR_SHIPPING_NOT_SET');
+      expect(res.body.data.vendors).toHaveLength(1);
+      expect(res.body.data.vendors[0].vendor_id).toBe(vendorId);
+      expect(res.body.data.vendors[0].shipping.error.code).toBe('VENDOR_SHIPPING_NOT_SET');
+      expect(res.body.data.vendors[0].shipping.fee).toBe(0);
+      expect(res.body.data.summary.can_checkout).toBe(false);
+      expect(res.body.data.summary.has_errors).toBe(true);
     });
 
-    it('returns 200 with LOCATION_OUTSIDE_TOGO for client outside Togo', async () => {
+    it('returns LOCATION_OUTSIDE_TOGO for client outside Togo', async () => {
       await request(app)
         .patch('/api/vendor/shipping')
         .set('Authorization', `Bearer ${vendorToken}`)
@@ -96,17 +120,18 @@ describe('Shipping API Integration Tests', () => {
           ],
         });
 
-      const res = await request(app).post('/api/store/shipping/calculate').send({
-        vendor_id: vendorId,
+      const agent = await createCartWithProduct();
+      const res = await agent.post('/api/store/shipping/calculate').send({
         client_lat: 48.85,
         client_lng: 2.35,
       });
 
       expect(res.status).toBe(200);
-      expect(res.body.data.error.code).toBe('LOCATION_OUTSIDE_TOGO');
+      expect(res.body.data.vendors[0].shipping.error.code).toBe('LOCATION_OUTSIDE_TOGO');
+      expect(res.body.data.summary.can_checkout).toBe(false);
     });
 
-    it('returns PER_KM fee for same-region delivery', async () => {
+    it('returns PER_KM fee per vendor for same-region delivery', async () => {
       await request(app)
         .patch('/api/vendor/shipping')
         .set('Authorization', `Bearer ${vendorToken}`)
@@ -117,16 +142,20 @@ describe('Shipping API Integration Tests', () => {
           ],
         });
 
-      const res = await request(app).post('/api/store/shipping/calculate').send({
-        vendor_id: vendorId,
+      const agent = await createCartWithProduct();
+      const res = await agent.post('/api/store/shipping/calculate').send({
         client_lat: 6.2,
         client_lng: 1.25,
       });
 
       expect(res.status).toBe(200);
-      expect(res.body.data.method).toBe('PER_KM');
-      expect(res.body.data.fee).toBeGreaterThanOrEqual(500);
-      expect(res.body.data.error).toBeUndefined();
+      expect(res.body.data.vendors).toHaveLength(1);
+      expect(res.body.data.vendors[0].shipping.method).toBe('PER_KM');
+      expect(res.body.data.vendors[0].shipping.fee).toBeGreaterThanOrEqual(500);
+      expect(res.body.data.vendors[0].shipping.error).toBeUndefined();
+      expect(res.body.data.summary.shipping_total).toBeGreaterThanOrEqual(500);
+      expect(res.body.data.summary.can_checkout).toBe(true);
+      expect(res.body.data.summary.has_errors).toBe(false);
     });
   });
 

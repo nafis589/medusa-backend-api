@@ -41,10 +41,14 @@ export class OrderService {
       buyerId,
       buyerVendorId,
       shippingAddress: body.shipping_address,
-      shippingFee: body.shipping_fee,
-      shippingMethod: body.shipping_method,
-      shippingDistanceKm: body.shipping_distance_km ?? null,
       paymentMethod: body.payment_method,
+      vendorShippings: body.vendor_shippings.map((entry) => ({
+        vendorId: entry.vendor_id,
+        shippingFee: entry.shipping_fee,
+        shippingMethod: entry.shipping_method,
+        shippingDistanceKm: entry.shipping_distance_km ?? null,
+        shippingDetail: entry.shipping_detail,
+      })),
     });
     return result.orders;
   }

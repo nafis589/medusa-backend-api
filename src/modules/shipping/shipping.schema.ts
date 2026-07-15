@@ -52,9 +52,9 @@ export const VendorShippingRegionsSchema = z
   .min(1, 'At least one shipping region is required');
 
 export const CalculateShippingSchema = z.object({
-  vendor_id: z.string().uuid(),
   client_lat: z.number().min(-90).max(90),
   client_lng: z.number().min(-180).max(180),
+  cart_id: z.string().uuid().optional(),
 });
 
 export const ValidateLocationSchema = z.object({

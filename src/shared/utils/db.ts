@@ -268,6 +268,7 @@ export async function initializeDatabase(): Promise<void> {
       shipping_region_id VARCHAR(20) NOT NULL,
       shipping_method VARCHAR(10) NOT NULL,
       shipping_distance_km DECIMAL(10, 2) NULL,
+      shipping_detail VARCHAR(255) NULL,
       tracking_number VARCHAR(100) NULL,
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
       updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
@@ -487,6 +488,13 @@ export async function initializeDatabase(): Promise<void> {
     'users',
     'last_login_at',
     'ADD COLUMN last_login_at TIMESTAMP NULL AFTER updated_at',
+  );
+
+  await addColumnIfMissing(
+    dbPool,
+    'orders',
+    'shipping_detail',
+    'ADD COLUMN shipping_detail VARCHAR(255) NULL AFTER shipping_distance_km',
   );
 
   await dbPool.query(`

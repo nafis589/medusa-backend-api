@@ -15,6 +15,7 @@ function mapOrder(order: Order & { items_count?: number }) {
     shipping_region_id: order.shipping_region_id,
     shipping_method: order.shipping_method,
     shipping_distance_km: order.shipping_distance_km,
+    shipping_detail: order.shipping_detail,
     tracking_number: order.tracking_number,
     created_at: order.created_at,
     updated_at: order.updated_at,

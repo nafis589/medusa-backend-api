@@ -37,6 +37,25 @@ export class CartService {
     return this.buildCartWithItems(cart);
   }
 
+  async getCartById(cartId: string): Promise<CartWithItems | null> {
+    const cart = await this.cartRepo.findById(cartId);
+    if (!cart) return null;
+    return this.buildCartWithItems(cart);
+  }
+
+  assertCartAccess(cart: Cart, userId?: string, sessionId?: string): void {
+    if (userId) {
+      if (cart.user_id !== userId) {
+        throw AppError.forbidden('Cart access denied');
+      }
+      return;
+    }
+    if (sessionId && cart.session_id === sessionId && !cart.user_id) {
+      return;
+    }
+    throw AppError.forbidden('Cart access denied');
+  }
+
   async addItem(
     cartId: string,
     productId: string,

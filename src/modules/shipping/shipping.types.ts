@@ -26,6 +26,40 @@ export interface ShippingFeeResult {
   error?: ShippingFeeError;
 }
 
+export interface CartShippingItemSummary {
+  product_id: string;
+  title: string;
+  quantity: number;
+  price: number;
+}
+
+export interface CartVendorShippingResult {
+  vendor_id: string;
+  shop_name: string;
+  items: CartShippingItemSummary[];
+  items_total: number;
+  shipping: {
+    fee: number;
+    method: ShippingMethod | null;
+    distanceKm?: number;
+    detail?: string;
+    error?: ShippingFeeError;
+  };
+}
+
+export interface CartShippingSummary {
+  items_total: number;
+  shipping_total: number;
+  grand_total: number;
+  has_errors: boolean;
+  can_checkout: boolean;
+}
+
+export interface CartShippingCalculateResult {
+  vendors: CartVendorShippingResult[];
+  summary: CartShippingSummary;
+}
+
 export interface VendorShippingConfig {
   location: VendorLocation | null;
   regions: VendorShippingRegion[];

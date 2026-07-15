@@ -22,9 +22,17 @@ export const PlaceOrderSchema = z.object({
     region_id: z.string().min(1),
     address_label: z.string().optional().nullable(),
   }),
-  shipping_fee: z.coerce.number().int().positive(),
-  shipping_method: z.enum(['PER_KM', 'FIXED']),
-  shipping_distance_km: z.coerce.number().nullable().optional(),
+  vendor_shippings: z
+    .array(
+      z.object({
+        vendor_id: z.string().uuid(),
+        shipping_fee: z.coerce.number().int().min(0),
+        shipping_method: z.enum(['PER_KM', 'FIXED']),
+        shipping_distance_km: z.coerce.number().nullable().optional(),
+        shipping_detail: z.string().min(1),
+      }),
+    )
+    .min(1),
 });
 
 export const OrderListQuerySchema = z.object({

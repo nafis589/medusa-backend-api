@@ -1,5 +1,8 @@
 import { Router } from 'express';
 import type { z } from 'zod';
+import { AppError } from '@shared/errors/app-error';
+import { createCartService } from '@modules/cart/cart.factory';
+import { createResolveCartMiddleware } from '../../api/store/cart/resolve-cart.middleware';
 import { ShippingService } from './shipping.service';
 import { VendorLocationRepository } from './vendor-location.repository';
 import { VendorShippingRegionRepository } from './vendor-shipping-region.repository';
@@ -11,21 +14,32 @@ const shippingService = new ShippingService(
   new VendorLocationRepository(),
   new VendorShippingRegionRepository(),
 );
+const cartService = createCartService();
+const resolveCart = createResolveCartMiddleware(cartService);
 
 /**
  * POST /api/store/shipping/calculate
- * Always returns 200 — business errors are included in data.error.
+ * Always returns 200 — business errors are included per vendor in data.vendors[].shipping.error.
  */
-router.post('/calculate', validate(CalculateShippingSchema), async (req, res, next) => {
+router.post('/calculate', resolveCart, validate(CalculateShippingSchema), async (req, res, next) => {
   try {
-    const { vendor_id, client_lat, client_lng } = req.body as z.infer<
-      typeof CalculateShippingSchema
-    >;
-    const result = await shippingService.calculateShippingFee({
-      vendorId: vendor_id,
-      clientLat: client_lat,
-      clientLng: client_lng,
-    });
+    const { client_lat, client_lng, cart_id } = req.body as z.infer<typeof CalculateShippingSchema>;
+    const userId = req.user?.id;
+    const sessionId = userId ? undefined : req.cartSessionId;
+
+    let cart;
+    if (cart_id && cart_id !== req.cart!.id) {
+      const specified = await cartService.getCartById(cart_id);
+      if (!specified) {
+        throw AppError.notFound('Cart');
+      }
+      cartService.assertCartAccess(specified.cart, userId, sessionId);
+      cart = specified;
+    } else {
+      cart = await cartService.getCart(userId, sessionId);
+    }
+
+    const result = await shippingService.calculateCartShipping(cart, client_lat, client_lng);
     res.json({ data: result });
   } catch (err) {
     next(err);

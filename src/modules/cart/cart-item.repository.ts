@@ -140,6 +140,15 @@ export class CartItemRepository implements ICartItemRepository {
     await this.pool.query('DELETE FROM cart_items WHERE id = ?', [id]);
   }
 
+  async deleteByIds(ids: string[], connection?: PoolConnection): Promise<void> {
+    if (ids.length === 0) return;
+    const db = connection ?? this.pool;
+    await db.query(
+      `DELETE FROM cart_items WHERE id IN (${ids.map(() => '?').join(', ')})`,
+      ids,
+    );
+  }
+
   async deleteByCartId(cartId: string, connection?: PoolConnection): Promise<void> {
     const db = connection ?? this.pool;
     await db.query('DELETE FROM cart_items WHERE cart_id = ?', [cartId]);

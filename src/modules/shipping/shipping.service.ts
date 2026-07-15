@@ -10,7 +10,10 @@ import type {
   ShippingFeeResult,
   ValidateLocationResult,
   VendorShippingConfig,
+  CartShippingCalculateResult,
+  CartVendorShippingResult,
 } from './shipping.types';
+import type { CartWithItems } from '@modules/cart/cart.types';
 
 export class ShippingService {
   constructor(
@@ -147,7 +150,7 @@ export class ShippingService {
         method: 'PER_KM',
         regionId: clientRegion.id,
         distanceKm,
-        detail: `${Math.round(distanceKm)} km × ${regionConfig.price_per_km} FCFA/km`,
+        detail: `${distanceKm.toLocaleString('fr-FR', { minimumFractionDigits: 1, maximumFractionDigits: 1 })} km × ${regionConfig.price_per_km} FCFA/km`,
       };
     }
 
@@ -167,6 +170,89 @@ export class ShippingService {
       method: 'FIXED',
       regionId: clientRegion.id,
       detail: `Livraison inter-région vers ${clientRegion.name}`,
+    };
+  }
+
+  async calculateCartShipping(
+    cart: CartWithItems,
+    clientLat: number,
+    clientLng: number,
+  ): Promise<CartShippingCalculateResult> {
+    const vendorGroups = new Map<
+      string,
+      { shop_name: string; items: CartVendorShippingResult['items']; items_total: number }
+    >();
+
+    for (const item of cart.items) {
+      const vendorId = item.product.vendor.id;
+      const lineTotal = item.price_snapshot * item.quantity;
+      const existing = vendorGroups.get(vendorId);
+      const line = {
+        product_id: item.product_id,
+        title: item.product.title,
+        quantity: item.quantity,
+        price: item.price_snapshot,
+      };
+      if (existing) {
+        existing.items.push(line);
+        existing.items_total += lineTotal;
+      } else {
+        vendorGroups.set(vendorId, {
+          shop_name: item.product.vendor.shop_name,
+          items: [line],
+          items_total: lineTotal,
+        });
+      }
+    }
+
+    const vendors: CartVendorShippingResult[] = [];
+    let itemsTotal = 0;
+    let shippingTotal = 0;
+    let hasErrors = false;
+    let deliverableCount = 0;
+
+    for (const [vendorId, group] of vendorGroups) {
+      itemsTotal += group.items_total;
+      const feeResult = await this.calculateShippingFee({
+        vendorId,
+        clientLat,
+        clientLng,
+      });
+
+      const shippingError = feeResult.error;
+      if (shippingError) {
+        hasErrors = true;
+      } else {
+        deliverableCount += 1;
+        shippingTotal += feeResult.fee;
+      }
+
+      vendors.push({
+        vendor_id: vendorId,
+        shop_name: group.shop_name,
+        items: group.items,
+        items_total: group.items_total,
+        shipping: {
+          fee: shippingError ? 0 : feeResult.fee,
+          method: feeResult.method ?? 'FIXED',
+          distanceKm: feeResult.distanceKm,
+          detail: feeResult.detail ?? shippingError?.message ?? '',
+          error: shippingError,
+        },
+      });
+    }
+
+    const canCheckout = vendors.length > 0 && deliverableCount > 0;
+
+    return {
+      vendors,
+      summary: {
+        items_total: itemsTotal,
+        shipping_total: shippingTotal,
+        grand_total: itemsTotal + shippingTotal,
+        has_errors: hasErrors,
+        can_checkout: canCheckout,
+      },
     };
   }
 

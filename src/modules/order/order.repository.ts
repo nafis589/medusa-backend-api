@@ -50,6 +50,7 @@ function mapOrder(row: mysql.RowDataPacket): Order & { items_count?: number } {
     shipping_method: row.shipping_method as ShippingMethod,
     shipping_distance_km:
       row.shipping_distance_km === null ? null : Number(row.shipping_distance_km),
+    shipping_detail: (row.shipping_detail as string | null) ?? null,
     tracking_number: (row.tracking_number as string | null) ?? null,
     created_at: row.created_at as Date,
     updated_at: row.updated_at as Date,
@@ -80,8 +81,8 @@ export class OrderRepository implements IOrderRepository {
       `INSERT INTO orders (
         id, buyer_id, vendor_id, status, total_amount, shipping_fee,
         payment_method, shipping_address, shipping_region_id, shipping_method,
-        shipping_distance_km, tracking_number
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        shipping_distance_km, shipping_detail, tracking_number
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         data.id,
         data.buyer_id,
@@ -94,6 +95,7 @@ export class OrderRepository implements IOrderRepository {
         data.shipping_region_id,
         data.shipping_method,
         data.shipping_distance_km ?? null,
+        data.shipping_detail ?? null,
         data.tracking_number ?? null,
       ],
     );
