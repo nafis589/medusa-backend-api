@@ -6,28 +6,53 @@ import { formatFcfa, formatOrderRef, getVendorUserId } from './order-notificatio
 
 const notificationService = createNotificationService();
 
-async function handleOrderCancelled({ order }: OrderCancelledEvent): Promise<void> {
+async function handleOrderCancelled({
+  order,
+  reason,
+  cancelledBy,
+}: OrderCancelledEvent): Promise<void> {
   try {
+    const ref = formatOrderRef(order.id);
     const vendorUserId = await getVendorUserId(order.vendor_id);
-    if (!vendorUserId) {
-      logger.warn({ vendorId: order.vendor_id }, 'Vendor user not found for order.cancelled');
-      return;
-    }
 
-    await notificationService.create(vendorUserId, {
-      type: 'ORDER_CANCELLED',
-      title: 'Commande annulée',
-      body: `La commande ${formatOrderRef(order.id)} a été annulée (${formatFcfa(order.total_amount)}).`,
-      metadata: {
+    if (cancelledBy === 'admin') {
+      await notificationService.create(order.buyer_id, {
+        type: 'ORDER_CANCELLED',
+        title: 'Commande annulée',
+        body: reason
+          ? `Votre commande ${ref} a été annulée par l'administration. Raison : ${reason}`
+          : `Votre commande ${ref} a été annulée par l'administration.`,
+        metadata: { orderId: order.id, total: order.total_amount },
+      });
+      emitToUser(order.buyer_id, 'order:cancelled', {
         orderId: order.id,
         total: order.total_amount,
-      },
-    });
+      });
+    }
 
-    emitToUser(vendorUserId, 'order:cancelled', {
-      orderId: order.id,
-      total: order.total_amount,
-    });
+    if (vendorUserId) {
+      const vendorBody =
+        cancelledBy === 'admin' && reason
+          ? `La commande ${ref} a été annulée par l'administration (${formatFcfa(order.total_amount)}). Raison : ${reason}`
+          : `La commande ${ref} a été annulée (${formatFcfa(order.total_amount)}).`;
+
+      await notificationService.create(vendorUserId, {
+        type: 'ORDER_CANCELLED',
+        title: 'Commande annulée',
+        body: vendorBody,
+        metadata: {
+          orderId: order.id,
+          total: order.total_amount,
+        },
+      });
+
+      emitToUser(vendorUserId, 'order:cancelled', {
+        orderId: order.id,
+        total: order.total_amount,
+      });
+    } else {
+      logger.warn({ vendorId: order.vendor_id }, 'Vendor user not found for order.cancelled');
+    }
   } catch (err) {
     logger.error(err, 'Failed to handle order.cancelled event');
   }

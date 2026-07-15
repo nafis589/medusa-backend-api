@@ -72,6 +72,56 @@ router.get('/', validateQuery(VendorListQuerySchema), async (req, res, next) => 
   }
 });
 
+router.get('/:id/products', validateParams(VendorIdSchema), async (req, res, next) => {
+  try {
+    const { id } = req.params as { id: string };
+    const limit = Math.min(50, Math.max(1, Number(req.query.limit) || 10));
+    const page = Math.max(1, Number(req.query.page) || 1);
+    const offset = (page - 1) * limit;
+
+    const [vendorRows] = await db.query<mysql.RowDataPacket[]>(
+      'SELECT id FROM vendors WHERE id = ?',
+      [id],
+    );
+    if (!vendorRows.length) throw AppError.notFound('Vendor');
+
+    const [countRows] = await db.query<mysql.RowDataPacket[]>(
+      'SELECT COUNT(*) AS total FROM products WHERE vendor_id = ?',
+      [id],
+    );
+    const total = Number(countRows[0]?.total ?? 0);
+
+    const [rows] = await db.query<mysql.RowDataPacket[]>(
+      `SELECT p.id, p.title, p.status, p.price, p.views_count,
+              (SELECT pi.url FROM product_images pi WHERE pi.product_id = p.id ORDER BY pi.is_primary DESC, pi.position ASC LIMIT 1) AS image
+       FROM products p
+       WHERE p.vendor_id = ?
+       ORDER BY p.created_at DESC
+       LIMIT ? OFFSET ?`,
+      [id, limit, offset],
+    );
+
+    res.json({
+      data: rows.map((p) => ({
+        id: String(p.id),
+        title: String(p.title),
+        status: String(p.status),
+        price: Number(p.price),
+        views_count: Number(p.views_count ?? 0),
+        image: (p.image as string | null) ?? null,
+      })),
+      meta: {
+        total,
+        page,
+        limit,
+        totalPages: Math.ceil(total / limit),
+      },
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
 router.get('/:id', validateParams(VendorIdSchema), async (req, res, next) => {
   try {
     const { id } = req.params as { id: string };

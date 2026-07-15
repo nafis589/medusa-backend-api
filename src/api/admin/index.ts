@@ -31,7 +31,7 @@ import adminStatsRoutes from '@modules/admin/admin-stats.routes';
 router.use('/stats', adminStatsRoutes);
 
 // ── User management (Phase 10) ────────────────────────────────────────────
-// import adminUserRoutes from '@modules/auth/admin-user.routes';
-// router.use('/users', adminUserRoutes);
+import adminUserRoutes from '@modules/auth/admin-user.routes';
+router.use('/users', adminUserRoutes);
 
 export default router;

@@ -10,6 +10,7 @@ import type {
   ShippingMethod,
   OrderListFilters,
   OrderVendorSummary,
+  AdminOrderListRow,
 } from './order.types';
 
 function parseJson<T>(value: unknown): T {
@@ -20,6 +21,19 @@ function parseJson<T>(value: unknown): T {
     return JSON.parse(value) as T;
   }
   return value as T;
+}
+
+function mapAdminOrderRow(row: mysql.RowDataPacket): AdminOrderListRow {
+  const order = mapOrder(row);
+  return {
+    ...order,
+    items_count: Number(row.items_count ?? 0),
+    shop_name: String(row.shop_name ?? ''),
+  };
+}
+
+function normalizeOrderSearchTerm(search: string): string {
+  return search.trim().replace(/^CMD-/i, '').replace(/-/g, '');
 }
 
 function mapOrder(row: mysql.RowDataPacket): Order & { items_count?: number } {
@@ -105,22 +119,45 @@ export class OrderRepository implements IOrderRepository {
     const params: unknown[] = [];
 
     if (filters.buyer_id) {
-      conditions.push('buyer_id = ?');
+      conditions.push('o.buyer_id = ?');
       params.push(filters.buyer_id);
     }
     if (filters.vendor_id) {
-      conditions.push('vendor_id = ?');
+      conditions.push('o.vendor_id = ?');
       params.push(filters.vendor_id);
     }
     if (filters.status) {
-      conditions.push('status = ?');
+      conditions.push('o.status = ?');
       params.push(filters.status);
+    }
+    if (filters.date_from) {
+      conditions.push('DATE(o.created_at) >= ?');
+      params.push(filters.date_from);
+    }
+    if (filters.date_to) {
+      conditions.push('DATE(o.created_at) <= ?');
+      params.push(filters.date_to);
+    }
+    if (filters.search?.trim()) {
+      const term = `%${filters.search.trim()}%`;
+      const idTerm = `%${normalizeOrderSearchTerm(filters.search)}%`;
+      conditions.push(`(
+        REPLACE(o.id, '-', '') LIKE ?
+        OR JSON_UNQUOTE(JSON_EXTRACT(o.shipping_address, '$.first_name')) LIKE ?
+        OR JSON_UNQUOTE(JSON_EXTRACT(o.shipping_address, '$.last_name')) LIKE ?
+        OR CONCAT(
+          JSON_UNQUOTE(JSON_EXTRACT(o.shipping_address, '$.first_name')),
+          ' ',
+          JSON_UNQUOTE(JSON_EXTRACT(o.shipping_address, '$.last_name'))
+        ) LIKE ?
+      )`);
+      params.push(idTerm, term, term, term);
     }
 
     const where = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
 
     const [countRows] = await this.pool.query(
-      `SELECT COUNT(*) AS total FROM orders ${where}`,
+      `SELECT COUNT(*) AS total FROM orders o ${where}`,
       params,
     );
     const total = Number((countRows as mysql.RowDataPacket[])[0]?.total ?? 0);
@@ -137,6 +174,75 @@ export class OrderRepository implements IOrderRepository {
 
     return {
       orders: (rows as mysql.RowDataPacket[]).map(mapOrder),
+      total,
+    };
+  }
+
+  async listForAdmin(filters: OrderListFilters): Promise<{ orders: AdminOrderListRow[]; total: number }> {
+    const conditions: string[] = [];
+    const params: unknown[] = [];
+
+    if (filters.buyer_id) {
+      conditions.push('o.buyer_id = ?');
+      params.push(filters.buyer_id);
+    }
+    if (filters.vendor_id) {
+      conditions.push('o.vendor_id = ?');
+      params.push(filters.vendor_id);
+    }
+    if (filters.status) {
+      conditions.push('o.status = ?');
+      params.push(filters.status);
+    }
+    if (filters.date_from) {
+      conditions.push('DATE(o.created_at) >= ?');
+      params.push(filters.date_from);
+    }
+    if (filters.date_to) {
+      conditions.push('DATE(o.created_at) <= ?');
+      params.push(filters.date_to);
+    }
+    if (filters.search?.trim()) {
+      const term = `%${filters.search.trim()}%`;
+      const idTerm = `%${normalizeOrderSearchTerm(filters.search)}%`;
+      conditions.push(`(
+        REPLACE(o.id, '-', '') LIKE ?
+        OR JSON_UNQUOTE(JSON_EXTRACT(o.shipping_address, '$.first_name')) LIKE ?
+        OR JSON_UNQUOTE(JSON_EXTRACT(o.shipping_address, '$.last_name')) LIKE ?
+        OR CONCAT(
+          JSON_UNQUOTE(JSON_EXTRACT(o.shipping_address, '$.first_name')),
+          ' ',
+          JSON_UNQUOTE(JSON_EXTRACT(o.shipping_address, '$.last_name'))
+        ) LIKE ?
+      )`);
+      params.push(idTerm, term, term, term);
+    }
+
+    const where = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
+
+    const [countRows] = await this.pool.query(
+      `SELECT COUNT(*) AS total
+       FROM orders o
+       INNER JOIN vendors v ON v.id = o.vendor_id
+       ${where}`,
+      params,
+    );
+    const total = Number((countRows as mysql.RowDataPacket[])[0]?.total ?? 0);
+
+    const [rows] = await this.pool.query(
+      `SELECT o.*,
+        (SELECT COUNT(*) FROM order_items oi WHERE oi.order_id = o.id) AS items_count,
+        v.shop_name
+       FROM orders o
+       INNER JOIN vendors v ON v.id = o.vendor_id
+       ${where}
+       ORDER BY o.created_at DESC
+       LIMIT ? OFFSET ?`,
+      [...params, filters.limit, filters.offset],
+    );
+
+    return {
+      orders: (rows as mysql.RowDataPacket[]).map(mapAdminOrderRow),
       total,
     };
   }
@@ -167,6 +273,40 @@ export class OrderRepository implements IOrderRepository {
     return {
       id: results[0].id as string,
       shop_name: results[0].shop_name as string,
+    };
+  }
+
+  async findAdminVendorSummary(vendorId: string): Promise<{ id: string; shop_name: string; email: string; user_id: string } | null> {
+    const [rows] = await this.pool.query(
+      `SELECT v.id, v.shop_name, v.user_id, u.email
+       FROM vendors v
+       INNER JOIN users u ON u.id = v.user_id
+       WHERE v.id = ?`,
+      [vendorId],
+    );
+    const results = rows as mysql.RowDataPacket[];
+    if (results.length === 0) return null;
+    return {
+      id: results[0].id as string,
+      shop_name: results[0].shop_name as string,
+      email: results[0].email as string,
+      user_id: results[0].user_id as string,
+    };
+  }
+
+  async findAdminBuyerSummary(buyerId: string): Promise<{ id: string; first_name: string; last_name: string; email: string; phone: string | null } | null> {
+    const [rows] = await this.pool.query(
+      'SELECT id, first_name, last_name, email, phone FROM users WHERE id = ?',
+      [buyerId],
+    );
+    const results = rows as mysql.RowDataPacket[];
+    if (results.length === 0) return null;
+    return {
+      id: results[0].id as string,
+      first_name: results[0].first_name as string,
+      last_name: results[0].last_name as string,
+      email: results[0].email as string,
+      phone: (results[0].phone as string | null) ?? null,
     };
   }
 }

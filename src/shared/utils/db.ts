@@ -476,6 +476,34 @@ export async function initializeDatabase(): Promise<void> {
     'ADD COLUMN consumed_at TIMESTAMP NULL AFTER updated_at',
   );
 
+  await addColumnIfMissing(
+    dbPool,
+    'users',
+    'status',
+    "ADD COLUMN status ENUM('ACTIVE', 'SUSPENDED') DEFAULT 'ACTIVE' NOT NULL AFTER role",
+  );
+  await addColumnIfMissing(
+    dbPool,
+    'users',
+    'last_login_at',
+    'ADD COLUMN last_login_at TIMESTAMP NULL AFTER updated_at',
+  );
+
+  await dbPool.query(`
+    CREATE TABLE IF NOT EXISTS admin_user_actions (
+      id CHAR(36) PRIMARY KEY,
+      user_id CHAR(36) NOT NULL,
+      admin_id CHAR(36) NOT NULL,
+      action VARCHAR(50) NOT NULL,
+      reason TEXT NULL,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+      FOREIGN KEY (admin_id) REFERENCES users(id) ON DELETE CASCADE,
+      INDEX idx_admin_user_actions_user (user_id),
+      INDEX idx_admin_user_actions_created (created_at)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+  `);
+
   logger.info('Database schema tables verified successfully.');
 }
 

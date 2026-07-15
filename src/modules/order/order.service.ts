@@ -1,4 +1,5 @@
 import { randomUUID } from 'crypto';
+import type mysql from 'mysql2/promise';
 import { getPool } from '@shared/utils/db';
 import { AppError } from '@shared/errors/app-error';
 import { eventBus } from '@shared/utils/event-bus';
@@ -12,7 +13,7 @@ import type { IProductRepository } from '@modules/product/product.repository.int
 import type { Order } from './order.entity';
 import type { OrderStatus } from './order.types';
 import type { PlaceOrderBody } from './order.schema';
-import type { OrderDetail, OrderListResult } from './order.service.types';
+import type { OrderDetail, OrderListResult, AdminOrderDetail } from './order.service.types';
 import { findVendorIdByUserId } from '@modules/vendor/vendor.util';
 
 const ALLOWED_TRANSITIONS: Record<OrderStatus, OrderStatus[]> = {
@@ -84,18 +85,119 @@ export class OrderService {
     filters: {
       status?: OrderStatus;
       vendor_id?: string;
+      buyer_id?: string;
+      search?: string;
+      date_from?: string;
+      date_to?: string;
       page: number;
       limit: number;
     },
-  ): Promise<OrderListResult> {
+  ): Promise<OrderListResult & { orders: import('./order.types').AdminOrderListRow[] }> {
     const { offset, limit: safeLimit } = getPagination(filters.page, filters.limit);
-    const { orders, total } = await this.orderRepo.list({
+    const { orders, total } = await this.orderRepo.listForAdmin({
       vendor_id: filters.vendor_id,
+      buyer_id: filters.buyer_id,
       status: filters.status,
+      search: filters.search,
+      date_from: filters.date_from,
+      date_to: filters.date_to,
       offset,
       limit: safeLimit,
     });
     return { orders, total, page: filters.page, limit: safeLimit };
+  }
+
+  async getAdminOrderStats(): Promise<{
+    orders_today: number;
+    revenue_today: number;
+    pending_processing: number;
+    delivery_rate: number;
+  }> {
+    const pool = getPool();
+    const [ordersTodayRows] = await pool.query(
+      `SELECT COUNT(*) AS value FROM orders WHERE DATE(created_at) = CURDATE()`,
+    );
+    const [revenueTodayRows] = await pool.query(
+      `SELECT COALESCE(SUM(total_amount), 0) AS value FROM orders WHERE DATE(created_at) = CURDATE()`,
+    );
+    const [pendingRows] = await pool.query(
+      `SELECT COUNT(*) AS value FROM orders WHERE status IN ('PENDING', 'CONFIRMED', 'PREPARING')`,
+    );
+    const [deliveryRows] = await pool.query(
+      `SELECT
+         SUM(CASE WHEN status = 'DELIVERED' THEN 1 ELSE 0 END) AS delivered,
+         SUM(CASE WHEN status IN ('DELIVERED', 'CANCELLED', 'RETURNED') THEN 1 ELSE 0 END) AS finalized
+       FROM orders`,
+    );
+    const delivered = Number((deliveryRows as mysql.RowDataPacket[])[0]?.delivered ?? 0);
+    const finalized = Number((deliveryRows as mysql.RowDataPacket[])[0]?.finalized ?? 0);
+    const delivery_rate = finalized > 0 ? Math.round((delivered / finalized) * 1000) / 10 : 0;
+
+    return {
+      orders_today: Number((ordersTodayRows as mysql.RowDataPacket[])[0]?.value ?? 0),
+      revenue_today: Number((revenueTodayRows as mysql.RowDataPacket[])[0]?.value ?? 0),
+      pending_processing: Number((pendingRows as mysql.RowDataPacket[])[0]?.value ?? 0),
+      delivery_rate,
+    };
+  }
+
+  async getOrderForAdmin(orderId: string): Promise<AdminOrderDetail> {
+    const order = await this.orderRepo.findById(orderId);
+    if (!order) {
+      throw AppError.notFound('Order');
+    }
+    return this.buildAdminOrderDetail(order);
+  }
+
+  async cancelOrderByAdmin(orderId: string, adminUserId: string, reason: string): Promise<Order> {
+    const order = await this.orderRepo.findById(orderId);
+    if (!order) {
+      throw AppError.notFound('Order');
+    }
+    const cancellable: OrderStatus[] = ['PENDING', 'CONFIRMED', 'PREPARING', 'SHIPPED'];
+    if (!cancellable.includes(order.status)) {
+      throw new AppError(
+        400,
+        'ORDER_NOT_CANCELLABLE',
+        'Cette commande ne peut plus être annulée',
+      );
+    }
+
+    const items = await this.orderItemRepo.findByOrderId(orderId);
+    const pool = getPool();
+    const connection = await pool.getConnection();
+
+    try {
+      await connection.beginTransaction();
+
+      const updated = await this.orderRepo.updateStatus(orderId, 'CANCELLED', connection);
+
+      for (const item of items) {
+        if (item.product_id) {
+          await this.productRepo.incrementStock(item.product_id, item.quantity, connection);
+        }
+      }
+
+      await this.orderStatusHistoryRepo.create(
+        {
+          id: randomUUID(),
+          order_id: orderId,
+          status: 'CANCELLED',
+          note: `Annulation admin : ${reason}`,
+          created_by: adminUserId,
+        },
+        connection,
+      );
+
+      await connection.commit();
+      eventBus.emitOrderCancelled({ order: updated, reason, cancelledBy: 'admin' });
+      return updated;
+    } catch (err) {
+      await connection.rollback();
+      throw err;
+    } finally {
+      connection.release();
+    }
   }
 
   getListMeta(total: number, page: number, limit: number): PaginationMeta {
@@ -234,5 +336,95 @@ export class OrderService {
     }
 
     return { order, items, status_history, vendor };
+  }
+
+  private async buildAdminOrderDetail(order: Order): Promise<AdminOrderDetail> {
+    const [items, status_history, vendorRow, buyer] = await Promise.all([
+      this.orderItemRepo.findByOrderId(order.id),
+      this.orderStatusHistoryRepo.findByOrderId(order.id),
+      this.orderRepo.findAdminVendorSummary(order.vendor_id),
+      this.orderRepo.findAdminBuyerSummary(order.buyer_id),
+    ]);
+
+    if (!vendorRow) {
+      throw AppError.notFound('Vendor');
+    }
+    if (!buyer) {
+      throw AppError.notFound('Buyer');
+    }
+
+    const itemsWithStatus = await Promise.all(
+      items.map(async (item) => {
+        let product_status: string | null = null;
+        if (item.product_id) {
+          const product = await this.productRepo.findById(item.product_id);
+          product_status = product?.status ?? null;
+        }
+        return { ...item, product_status };
+      }),
+    );
+
+    const vendorUserId = vendorRow.user_id;
+    const authorIds = [...new Set(status_history.map((entry) => entry.created_by))];
+    const authorMap = new Map<string, { name: string; role: 'Acheteur' | 'Vendeur' | 'Admin' }>();
+
+    for (const authorId of authorIds) {
+      if (authorId === order.buyer_id) {
+        authorMap.set(authorId, {
+          name: `${buyer.first_name} ${buyer.last_name}`.trim(),
+          role: 'Acheteur',
+        });
+        continue;
+      }
+      if (authorId === vendorUserId) {
+        authorMap.set(authorId, { name: vendorRow.shop_name, role: 'Vendeur' });
+        continue;
+      }
+      const pool = getPool();
+      const [rows] = await pool.query(
+        'SELECT first_name, last_name, role FROM users WHERE id = ?',
+        [authorId],
+      );
+      const user = (rows as mysql.RowDataPacket[])[0];
+      if (user) {
+        const name = `${user.first_name as string} ${user.last_name as string}`.trim();
+        const role =
+          user.role === 'ADMIN' || user.role === 'SUPER_ADMIN'
+            ? 'Admin'
+            : user.role === 'VENDOR'
+              ? 'Vendeur'
+              : 'Acheteur';
+        authorMap.set(authorId, { name, role });
+      } else {
+        authorMap.set(authorId, { name: 'Utilisateur inconnu', role: 'Admin' });
+      }
+    }
+
+    const enrichedHistory = status_history.map((entry) => {
+      const author = authorMap.get(entry.created_by) ?? { name: 'Utilisateur inconnu', role: 'Admin' as const };
+      return {
+        ...entry,
+        author_name: author.name,
+        author_role: author.role,
+      };
+    });
+
+    return {
+      order,
+      items: itemsWithStatus,
+      status_history: enrichedHistory,
+      vendor: {
+        id: vendorRow.id,
+        shop_name: vendorRow.shop_name,
+        email: vendorRow.email,
+      },
+      buyer: {
+        id: buyer.id,
+        first_name: buyer.first_name,
+        last_name: buyer.last_name,
+        email: buyer.email,
+        phone: buyer.phone ?? order.shipping_address.phone,
+      },
+    };
   }
 }

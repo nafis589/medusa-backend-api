@@ -8,6 +8,8 @@ export interface OrderPlacedEvent {
 
 export interface OrderCancelledEvent {
   order: Order;
+  reason?: string;
+  cancelledBy?: 'buyer' | 'admin';
 }
 
 export interface OrderStatusChangedEvent {

@@ -35,6 +35,14 @@ export const OrderListQuerySchema = z.object({
 
 export const AdminOrderListQuerySchema = OrderListQuerySchema.extend({
   vendor_id: z.string().uuid().optional(),
+  buyer_id: z.string().uuid().optional(),
+  search: z.string().optional(),
+  date_from: z.string().optional(),
+  date_to: z.string().optional(),
+});
+
+export const AdminCancelOrderSchema = z.object({
+  reason: z.string().min(1, 'La raison est obligatoire'),
 });
 
 export const OrderIdSchema = z.object({
@@ -56,4 +64,5 @@ export const UpdateOrderStatusSchema = z.object({
 export type PlaceOrderBody = z.infer<typeof PlaceOrderSchema>;
 export type OrderListQueryInput = z.infer<typeof OrderListQuerySchema>;
 export type AdminOrderListQueryInput = z.infer<typeof AdminOrderListQuerySchema>;
+export type AdminCancelOrderBody = z.infer<typeof AdminCancelOrderSchema>;
 export type UpdateOrderStatusBody = z.infer<typeof UpdateOrderStatusSchema>;

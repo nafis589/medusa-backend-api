@@ -90,6 +90,12 @@ export class AuthService {
       throw new AppError(401, 'INVALID_CREDENTIALS', 'Invalid email or password');
     }
 
+    if (user.status === 'SUSPENDED') {
+      throw new AppError(403, 'ACCOUNT_SUSPENDED', 'Your account has been suspended');
+    }
+
+    await this.userRepository.update(user.id, { last_login_at: new Date() });
+
     // 3. Generate tokens
     const accessToken = signToken({ id: user.id, email: user.email, role: user.role });
     const refreshToken = signRefreshToken({ id: user.id });
