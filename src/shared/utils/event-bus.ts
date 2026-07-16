@@ -6,6 +6,12 @@ export interface OrderPlacedEvent {
   order: Order;
 }
 
+export interface OrderRefusedEvent {
+  order: Order;
+  reason?: string;
+  vendorShopName: string;
+}
+
 export interface OrderCancelledEvent {
   order: Order;
   reason?: string;
@@ -38,6 +44,10 @@ class AppEventBus extends EventEmitter {
 
   emitOrderCancelled(payload: OrderCancelledEvent): void {
     this.emit('order.cancelled', payload);
+  }
+
+  emitOrderRefused(payload: OrderRefusedEvent): void {
+    this.emit('order.refused', payload);
   }
 
   emitOrderStatusChanged(payload: OrderStatusChangedEvent): void {

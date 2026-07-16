@@ -17,13 +17,14 @@ import type { OrderDetail, OrderListResult, AdminOrderDetail } from './order.ser
 import { findVendorIdByUserId } from '@modules/vendor/vendor.util';
 
 const ALLOWED_TRANSITIONS: Record<OrderStatus, OrderStatus[]> = {
-  PENDING: ['CONFIRMED', 'CANCELLED'],
+  PENDING: ['CONFIRMED', 'CANCELLED', 'REFUSED'],
   CONFIRMED: ['PREPARING'],
   PREPARING: ['SHIPPED'],
   SHIPPED: ['DELIVERED'],
   DELIVERED: ['RETURNED'],
   CANCELLED: [],
   RETURNED: [],
+  REFUSED: [],
 };
 
 export class OrderService {
@@ -130,7 +131,7 @@ export class OrderService {
     const [deliveryRows] = await pool.query(
       `SELECT
          SUM(CASE WHEN status = 'DELIVERED' THEN 1 ELSE 0 END) AS delivered,
-         SUM(CASE WHEN status IN ('DELIVERED', 'CANCELLED', 'RETURNED') THEN 1 ELSE 0 END) AS finalized
+         SUM(CASE WHEN status IN ('DELIVERED', 'CANCELLED', 'RETURNED', 'REFUSED') THEN 1 ELSE 0 END) AS finalized
        FROM orders`,
     );
     const delivered = Number((deliveryRows as mysql.RowDataPacket[])[0]?.delivered ?? 0);
@@ -270,6 +271,75 @@ export class OrderService {
 
       await connection.commit();
       eventBus.emitOrderCancelled({ order: updated });
+      return updated;
+    } catch (err) {
+      await connection.rollback();
+      throw err;
+    } finally {
+      connection.release();
+    }
+  }
+
+  async refuseOrderByVendor(
+    orderId: string,
+    vendorId: string,
+    vendorUserId: string,
+    reason?: string,
+  ): Promise<Order> {
+    const order = await this.orderRepo.findById(orderId);
+    if (!order) {
+      throw AppError.notFound('Order');
+    }
+    if (order.vendor_id !== vendorId) {
+      throw AppError.forbidden('You do not have access to this order');
+    }
+    if (order.status !== 'PENDING') {
+      throw new AppError(
+        400,
+        'ORDER_CANNOT_BE_REFUSED',
+        'Seules les commandes en attente peuvent être refusées',
+      );
+    }
+
+    const items = await this.orderItemRepo.findByOrderId(orderId);
+    const vendor = await this.orderRepo.findVendorSummary(vendorId);
+    if (!vendor) {
+      throw AppError.notFound('Vendor');
+    }
+
+    const pool = getPool();
+    const connection = await pool.getConnection();
+
+    try {
+      await connection.beginTransaction();
+
+      const updated = await this.orderRepo.updateStatus(orderId, 'REFUSED', connection);
+
+      for (const item of items) {
+        if (item.product_id) {
+          await this.productRepo.incrementStock(item.product_id, item.quantity, connection);
+        }
+      }
+
+      await this.orderStatusHistoryRepo.create(
+        {
+          id: randomUUID(),
+          order_id: orderId,
+          status: 'REFUSED',
+          note: reason?.trim() || null,
+          created_by: vendorUserId,
+        },
+        connection,
+      );
+
+      await connection.commit();
+
+      eventBus.emitOrderRefused({
+        order: updated,
+        reason: reason?.trim() || undefined,
+        vendorShopName: vendor.shop_name,
+      });
+
       return updated;
     } catch (err) {
       await connection.rollback();

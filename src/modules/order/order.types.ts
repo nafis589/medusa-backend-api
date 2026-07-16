@@ -8,7 +8,8 @@ export type OrderStatus =
   | 'SHIPPED'
   | 'DELIVERED'
   | 'CANCELLED'
-  | 'RETURNED';
+  | 'RETURNED'
+  | 'REFUSED';
 
 /** Supported payment methods at checkout */
 export type PaymentMethod = 'CASH_ON_DELIVERY' | 'BANK_TRANSFER';

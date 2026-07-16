@@ -8,6 +8,7 @@ const orderStatusValues = [
   'DELIVERED',
   'CANCELLED',
   'RETURNED',
+  'REFUSED',
 ] as const;
 
 export const PlaceOrderSchema = z.object({
@@ -57,6 +58,10 @@ export const OrderIdSchema = z.object({
   id: z.string().uuid('Order id must be a valid UUID'),
 });
 
+export const VendorRefuseOrderSchema = z.object({
+  reason: z.string().max(300).optional(),
+});
+
 export const UpdateOrderStatusSchema = z.object({
   status: z.enum([
     'CONFIRMED',
@@ -73,4 +78,5 @@ export type PlaceOrderBody = z.infer<typeof PlaceOrderSchema>;
 export type OrderListQueryInput = z.infer<typeof OrderListQuerySchema>;
 export type AdminOrderListQueryInput = z.infer<typeof AdminOrderListQuerySchema>;
 export type AdminCancelOrderBody = z.infer<typeof AdminCancelOrderSchema>;
+export type VendorRefuseOrderBody = z.infer<typeof VendorRefuseOrderSchema>;
 export type UpdateOrderStatusBody = z.infer<typeof UpdateOrderStatusSchema>;

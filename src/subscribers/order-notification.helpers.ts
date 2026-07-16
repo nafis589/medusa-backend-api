@@ -9,6 +9,7 @@ const STATUS_LABELS: Record<OrderStatus, string> = {
   DELIVERED: 'Livrée',
   CANCELLED: 'Annulée',
   RETURNED: 'Retournée',
+  REFUSED: 'Refusée',
 };
 
 export function formatFcfa(amount: number): string {

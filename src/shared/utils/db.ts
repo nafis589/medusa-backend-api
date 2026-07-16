@@ -259,7 +259,7 @@ export async function initializeDatabase(): Promise<void> {
       vendor_id CHAR(36) NOT NULL,
       status ENUM(
         'PENDING', 'CONFIRMED', 'PREPARING', 'SHIPPED',
-        'DELIVERED', 'CANCELLED', 'RETURNED'
+        'DELIVERED', 'CANCELLED', 'RETURNED', 'REFUSED'
       ) DEFAULT 'PENDING' NOT NULL,
       total_amount INT NOT NULL,
       shipping_fee INT NOT NULL,
@@ -302,7 +302,7 @@ export async function initializeDatabase(): Promise<void> {
       order_id CHAR(36) NOT NULL,
       status ENUM(
         'PENDING', 'CONFIRMED', 'PREPARING', 'SHIPPED',
-        'DELIVERED', 'CANCELLED', 'RETURNED'
+        'DELIVERED', 'CANCELLED', 'RETURNED', 'REFUSED'
       ) NOT NULL,
       note TEXT NULL,
       created_by CHAR(36) NOT NULL,
@@ -512,7 +512,28 @@ export async function initializeDatabase(): Promise<void> {
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
   `);
 
+  await ensureOrderStatusRefused(dbPool);
+
   logger.info('Database schema tables verified successfully.');
+}
+
+const ORDER_STATUS_ENUM =
+  "'PENDING', 'CONFIRMED', 'PREPARING', 'SHIPPED', 'DELIVERED', 'CANCELLED', 'RETURNED', 'REFUSED'";
+
+async function ensureOrderStatusRefused(dbPool: mysql.Pool): Promise<void> {
+  const [rows] = await dbPool.query<mysql.RowDataPacket[]>(
+    `SELECT COLUMN_TYPE FROM information_schema.COLUMNS
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'orders' AND COLUMN_NAME = 'status'`,
+  );
+  const columnType = String(rows[0]?.COLUMN_TYPE ?? '');
+  if (columnType.includes("'REFUSED'")) return;
+
+  await dbPool.query(
+    `ALTER TABLE orders MODIFY COLUMN status ENUM(${ORDER_STATUS_ENUM}) DEFAULT 'PENDING' NOT NULL`,
+  );
+  await dbPool.query(
+    `ALTER TABLE order_status_history MODIFY COLUMN status ENUM(${ORDER_STATUS_ENUM}) NOT NULL`,
+  );
 }
 
 /**

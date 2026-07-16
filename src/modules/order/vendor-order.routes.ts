@@ -7,8 +7,10 @@ import {
   OrderListQuerySchema,
   OrderIdSchema,
   UpdateOrderStatusSchema,
+  VendorRefuseOrderSchema,
   type OrderListQueryInput,
   type UpdateOrderStatusBody,
+  type VendorRefuseOrderBody,
 } from './order.schema';
 import { mapOrderDetailResponse, mapOrdersResponse } from './order.mapper';
 import type { OrderStatus } from './order.types';
@@ -78,6 +80,31 @@ router.patch(
         req.user!.id,
         body.status,
         body.note,
+      );
+      res.json({ data: mapOrdersResponse([order])[0] });
+    } catch (err) {
+      next(err);
+    }
+  },
+);
+
+/**
+ * PATCH /api/vendor/orders/:id/refuse
+ */
+router.patch(
+  '/:id/refuse',
+  validateParams(OrderIdSchema),
+  validate(VendorRefuseOrderSchema),
+  async (req, res, next) => {
+    try {
+      const vendorId = await resolveVendorId(req);
+      const { id } = req.params as { id: string };
+      const body = req.body as VendorRefuseOrderBody;
+      const order = await service.refuseOrderByVendor(
+        id,
+        vendorId,
+        req.user!.id,
+        body.reason,
       );
       res.json({ data: mapOrdersResponse([order])[0] });
     } catch (err) {
