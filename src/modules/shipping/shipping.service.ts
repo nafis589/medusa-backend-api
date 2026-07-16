@@ -257,53 +257,90 @@ export class ShippingService {
   }
 
   async saveVendorShipping(vendorId: string, data: SaveVendorShippingData): Promise<void> {
-    const detectedRegion = this.getRegionFromCoords(data.location.lat, data.location.lng);
-
-    if (!detectedRegion) {
-      throw new AppError(
-        400,
-        'LOCATION_OUTSIDE_TOGO',
-        'La position doit être située au Togo pour configurer la livraison.',
-      );
-    }
-
-    const parsedRegions = VendorShippingRegionsSchema.parse(data.regions);
-
-    const homeRegions = parsedRegions.filter((r) => r.is_home_region);
-    if (homeRegions.length !== 1) {
-      throw AppError.badRequest('Exactement une région domicile (is_home_region) est requise.');
-    }
-
-    if (homeRegions[0].region_id !== detectedRegion.id) {
-      throw AppError.badRequest(
-        'La région domicile doit correspondre à la position du vendeur.',
-      );
-    }
-
     const existingLocation = await this.vendorLocationRepo.findByVendorId(vendorId);
 
-    await this.vendorLocationRepo.upsert({
-      id: existingLocation?.id ?? randomUUID(),
-      vendor_id: vendorId,
-      latitude: data.location.lat,
-      longitude: data.location.lng,
-      region_id: detectedRegion.id,
-      address: data.location.address ?? null,
-      city: data.location.city ?? null,
-      is_valid: true,
-    });
+    if (data.regions) {
+      const parsedRegions = VendorShippingRegionsSchema.parse(data.regions);
+      const homeRegions = parsedRegions.filter((r) => r.is_home_region);
+      if (homeRegions.length !== 1) {
+        throw AppError.badRequest('Exactement une région domicile (is_home_region) est requise.');
+      }
 
-    await this.vendorShippingRegionRepo.replaceAllForVendor(
-      vendorId,
-      parsedRegions.map((region) => ({
-        id: randomUUID(),
+      let expectedHomeRegionId: string | null = null;
+
+      if (data.location) {
+        const detectedRegion = this.getRegionFromCoords(data.location.lat, data.location.lng);
+        if (!detectedRegion) {
+          throw new AppError(
+            400,
+            'LOCATION_OUTSIDE_TOGO',
+            'La position doit être située au Togo pour configurer la livraison.',
+          );
+        }
+        expectedHomeRegionId = detectedRegion.id;
+      } else {
+        if (!existingLocation) {
+          throw AppError.badRequest(
+            'Impossible de mettre à jour les tarifs sans adresse vendeur configurée.',
+          );
+        }
+        expectedHomeRegionId = existingLocation.region_id;
+      }
+
+      if (homeRegions[0].region_id !== expectedHomeRegionId) {
+        throw AppError.badRequest(
+          'La région domicile doit correspondre à la position du vendeur.',
+        );
+      }
+
+      await this.vendorShippingRegionRepo.replaceAllForVendor(
+        vendorId,
+        parsedRegions.map((region) => ({
+          id: randomUUID(),
+          vendor_id: vendorId,
+          region_id: region.region_id,
+          is_home_region: region.is_home_region,
+          price_per_km: region.price_per_km ?? null,
+          min_fee: region.min_fee ?? 500,
+          fixed_price: region.fixed_price ?? null,
+        })),
+      );
+    }
+
+    if (data.location) {
+      const detectedRegion = this.getRegionFromCoords(data.location.lat, data.location.lng);
+
+      if (!detectedRegion) {
+        throw new AppError(
+          400,
+          'LOCATION_OUTSIDE_TOGO',
+          'La position doit être située au Togo pour configurer la livraison.',
+        );
+      }
+
+      if (data.regions) {
+        const homeRegions = data.regions.filter((r) => r.is_home_region);
+        if (homeRegions.length === 1 && homeRegions[0].region_id !== detectedRegion.id) {
+          throw AppError.badRequest(
+            'La région domicile doit correspondre à la position du vendeur.',
+          );
+        }
+      } else if (existingLocation && existingLocation.region_id !== detectedRegion.id) {
+        throw AppError.badRequest(
+          'La nouvelle position change la région domicile. Mettez à jour les tarifs en même temps.',
+        );
+      }
+
+      await this.vendorLocationRepo.upsert({
+        id: existingLocation?.id ?? randomUUID(),
         vendor_id: vendorId,
-        region_id: region.region_id,
-        is_home_region: region.is_home_region,
-        price_per_km: region.price_per_km ?? null,
-        min_fee: region.min_fee ?? 500,
-        fixed_price: region.fixed_price ?? null,
-      })),
-    );
+        latitude: data.location.lat,
+        longitude: data.location.lng,
+        region_id: detectedRegion.id,
+        address: data.location.address ?? null,
+        city: data.location.city ?? null,
+        is_valid: true,
+      });
+    }
   }
 }

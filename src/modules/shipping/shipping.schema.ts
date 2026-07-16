@@ -62,12 +62,18 @@ export const ValidateLocationSchema = z.object({
   lng: z.number().min(-180).max(180),
 });
 
-export const SaveVendorShippingSchema = z.object({
-  location: z.object({
-    lat: z.number().min(-90).max(90),
-    lng: z.number().min(-180).max(180),
-    address: z.string().max(500).nullable().optional(),
-    city: z.string().max(100).nullable().optional(),
-  }),
-  regions: VendorShippingRegionsSchema,
-});
+export const SaveVendorShippingSchema = z
+  .object({
+    location: z
+      .object({
+        lat: z.number().min(-90).max(90),
+        lng: z.number().min(-180).max(180),
+        address: z.string().max(500).nullable().optional(),
+        city: z.string().max(100).nullable().optional(),
+      })
+      .optional(),
+    regions: VendorShippingRegionsSchema.optional(),
+  })
+  .refine((data) => data.location !== undefined || data.regions !== undefined, {
+    message: 'At least one of location or regions must be provided',
+  });

@@ -81,8 +81,8 @@ export interface SaveVendorShippingRegionInput {
 }
 
 export interface SaveVendorShippingData {
-  location: SaveVendorShippingLocation;
-  regions: SaveVendorShippingRegionInput[];
+  location?: SaveVendorShippingLocation;
+  regions?: SaveVendorShippingRegionInput[];
 }
 
 export interface ValidateLocationResult {
