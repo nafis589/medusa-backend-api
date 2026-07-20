@@ -74,5 +74,7 @@ export interface IProductRepository {
   findByIdForUpdate(id: string, connection: PoolConnection): Promise<Product | null>;
   decrementStock(id: string, quantity: number, connection: PoolConnection): Promise<void>;
   incrementStock(id: string, quantity: number, connection?: PoolConnection): Promise<void>;
+  markSoldIfOutOfStock(id: string, connection: PoolConnection): Promise<void>;
+  reactivateIfRestocked(id: string, connection: PoolConnection): Promise<void>;
   deletePermanent(id: string): Promise<void>;
 }

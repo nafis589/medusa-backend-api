@@ -143,6 +143,7 @@ export class PlaceOrderWorkflow {
           throw new AppError(400, 'INSUFFICIENT_STOCK', 'Insufficient stock for this product');
         }
         await this.productRepo.decrementStock(item.product_id, item.quantity, connection);
+        await this.productRepo.markSoldIfOutOfStock(item.product_id, connection);
       }
 
       for (const entry of input.vendorShippings) {

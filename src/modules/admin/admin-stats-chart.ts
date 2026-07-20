@@ -180,8 +180,8 @@ export async function getAdminStatsChart(): Promise<AdminStatsChartData> {
      FROM carts c
      INNER JOIN cart_items ci ON ci.cart_id = c.id
      WHERE c.updated_at >= ${periodStart}
-     GROUP BY DATE(c.updated_at)
-     ORDER BY DATE(c.updated_at) ASC`,
+     GROUP BY DATE_FORMAT(c.updated_at, '%Y-%m-%d')
+     ORDER BY DATE_FORMAT(c.updated_at, '%Y-%m-%d') ASC`,
   );
 
   const [orderDailyRows] = await db.query<mysql.RowDataPacket[]>(
@@ -190,8 +190,8 @@ export async function getAdminStatsChart(): Promise<AdminStatsChartData> {
      FROM orders
      WHERE created_at >= ${periodStart}
        AND status NOT IN ('CANCELLED', 'RETURNED')
-     GROUP BY DATE(created_at)
-     ORDER BY DATE(created_at) ASC`,
+     GROUP BY DATE_FORMAT(created_at, '%Y-%m-%d')
+     ORDER BY DATE_FORMAT(created_at, '%Y-%m-%d') ASC`,
   );
 
   const cartsByDate = new Map<string, number>();

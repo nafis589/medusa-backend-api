@@ -1,4 +1,5 @@
 import { TOGO_REGIONS } from '@modules/shipping/togo-regions';
+import { SQL_VENDOR_TOTAL_SALES } from '@modules/vendor/vendor-sales.sql';
 import { getPool } from '@shared/utils/db';
 import { AppError } from '@shared/errors/app-error';
 import type mysql from 'mysql2/promise';
@@ -275,7 +276,7 @@ export class ProductRepository implements IProductRepository {
 
   async findDetailById(id: string): Promise<ProductDetailRow | null> {
     const [rows] = await this.pool.query(
-      `SELECT p.*, v.shop_name, v.shop_logo, v.rating AS vendor_rating, v.total_sales AS vendor_total_sales,
+      `SELECT p.*, v.shop_name, v.shop_logo, v.rating AS vendor_rating, ${SQL_VENDOR_TOTAL_SALES} AS vendor_total_sales,
               vl.region_id AS vendor_region_id,
               cat.name AS category_name,
               cat_parent.name AS parent_category_name,
@@ -794,6 +795,20 @@ export class ProductRepository implements IProductRepository {
   ): Promise<void> {
     const db = connection ?? this.pool;
     await db.query('UPDATE products SET stock = stock + ? WHERE id = ?', [quantity, id]);
+  }
+
+  async markSoldIfOutOfStock(id: string, connection: PoolConnection): Promise<void> {
+    await connection.query(
+      "UPDATE products SET status = 'SOLD' WHERE id = ? AND stock = 0 AND status = 'ACTIVE'",
+      [id],
+    );
+  }
+
+  async reactivateIfRestocked(id: string, connection: PoolConnection): Promise<void> {
+    await connection.query(
+      "UPDATE products SET status = 'ACTIVE' WHERE id = ? AND stock > 0 AND status = 'SOLD'",
+      [id],
+    );
   }
 
   async deletePermanent(id: string): Promise<void> {

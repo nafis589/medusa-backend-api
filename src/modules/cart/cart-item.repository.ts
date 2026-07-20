@@ -5,6 +5,7 @@ import type { PoolConnection } from 'mysql2/promise';
 import type { ICartItemRepository } from './cart-item.repository.interface';
 import type { CartItem, CreateCartItemData } from './cart-item.entity';
 import type { CartItemWithProduct } from './cart.types';
+import { SQL_VENDOR_TOTAL_SALES } from '@modules/vendor/vendor-sales.sql';
 import type { ProductStatus } from '@modules/product/product.entity';
 
 function mapCartItem(row: mysql.RowDataPacket): CartItem {
@@ -56,7 +57,7 @@ export class CartItemRepository implements ICartItemRepository {
   async findByCartId(cartId: string): Promise<CartItemWithProduct[]> {
     const [rows] = await this.pool.query(
       `SELECT ci.*, p.title, p.price, p.status, pi.url AS primary_image,
-              v.id AS vendor_id, v.shop_name, v.total_sales AS vendor_total_sales,
+              v.id AS vendor_id, v.shop_name, ${SQL_VENDOR_TOTAL_SALES} AS vendor_total_sales,
               vl.region_id AS vendor_region_id,
               (SELECT COUNT(*) FROM products p2
                WHERE p2.vendor_id = p.vendor_id AND p2.status = 'ACTIVE') AS vendor_active_products

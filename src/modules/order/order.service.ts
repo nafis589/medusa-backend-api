@@ -180,6 +180,7 @@ export class OrderService {
       for (const item of items) {
         if (item.product_id) {
           await this.productRepo.incrementStock(item.product_id, item.quantity, connection);
+          await this.productRepo.reactivateIfRestocked(item.product_id, connection);
         }
       }
 
@@ -255,6 +256,7 @@ export class OrderService {
       for (const item of items) {
         if (item.product_id) {
           await this.productRepo.incrementStock(item.product_id, item.quantity, connection);
+          await this.productRepo.reactivateIfRestocked(item.product_id, connection);
         }
       }
 
@@ -318,6 +320,7 @@ export class OrderService {
       for (const item of items) {
         if (item.product_id) {
           await this.productRepo.incrementStock(item.product_id, item.quantity, connection);
+          await this.productRepo.reactivateIfRestocked(item.product_id, connection);
         }
       }
 

@@ -2,6 +2,7 @@ import { randomUUID } from 'crypto';
 import type mysql from 'mysql2/promise';
 import { getPool } from '@shared/utils/db';
 import { TOGO_REGIONS } from '@modules/shipping/togo-regions';
+import { SQL_VENDOR_TOTAL_SALES } from './vendor-sales.sql';
 
 export interface VendorPublicProfile {
   id: string;
@@ -30,7 +31,7 @@ export class VendorPublicRepository {
   async findPublicProfile(id: string): Promise<VendorPublicProfile | null> {
     const [rows] = await this.pool.query<mysql.RowDataPacket[]>(
       `SELECT v.id, v.shop_name, v.shop_logo, v.shop_banner, v.shop_description AS description,
-              v.rating, v.total_sales, v.created_at AS member_since, v.user_id,
+              v.rating, ${SQL_VENDOR_TOTAL_SALES} AS total_sales, v.created_at AS member_since, v.user_id,
               vl.region_id AS region_id,
               (SELECT COUNT(*) FROM vendor_follows f WHERE f.vendor_id = v.id) AS followers_count,
               (SELECT COUNT(*) FROM vendor_follows f WHERE f.follower_id = v.user_id) AS following_count
